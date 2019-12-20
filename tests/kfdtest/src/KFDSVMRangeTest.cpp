@@ -546,3 +546,77 @@ TEST_F(KFDSVMRangeTest, PrefetchTest) {
 
     TEST_END
 }
+
+TEST_F(KFDSVMRangeTest, MigrateTest) {
+    TEST_REQUIRE_ENV_CAPABILITIES(ENVCAPS_64BITLINUX);
+    TEST_START(TESTPROFILE_RUNALL);
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    if (m_FamilyId < FAMILY_AI) {
+        LOG() << std::hex << "Skipping test: No svm range support for family ID 0x" << m_FamilyId << "." << std::endl;
+        return;
+    }
+
+    if (!GetVramSize(defaultGPUNode)) {
+        LOG() << "Skipping test: No VRAM found." << std::endl;
+        return;
+    }
+
+    HSAuint32 migrateRepeat = 8;
+    unsigned int BufferSize = 16 << 20;
+
+    HsaSVMRange DataBuffer(BufferSize, defaultGPUNode);
+    HSAuint32 *pData = DataBuffer.As<HSAuint32 *>();
+
+    HsaSVMRange SysBuffer(BufferSize, defaultGPUNode);
+    HSAuint32 *pBuf = SysBuffer.As<HSAuint32 *>();
+    EXPECT_SUCCESS(SVMRangePrefetchToNode(pBuf, BufferSize, 0));
+
+    HsaSVMRange SysBuffer2(BufferSize, defaultGPUNode);
+    HSAuint32 *pBuf2 = SysBuffer2.As<HSAuint32 *>();
+    EXPECT_SUCCESS(SVMRangePrefetchToNode(pBuf2, BufferSize, 0));
+
+    SDMAQueue sdmaQueue;
+    ASSERT_SUCCESS(sdmaQueue.Create(defaultGPUNode));
+
+    for (HSAuint32 i = 0; i < BufferSize / 4; i++)
+        pData[i] = i;
+
+    while (migrateRepeat--) {
+        /* Migrate from ram to vram */
+        EXPECT_SUCCESS(SVMRangePrefetchToNode(pBuf, BufferSize, defaultGPUNode));
+        EXPECT_SUCCESS(SVMRangePrefetchToNode(pBuf2, BufferSize, defaultGPUNode));
+        /* Update content in migrated buffer in vram */
+        sdmaQueue.PlaceAndSubmitPacket(SDMACopyDataPacket(sdmaQueue.GetFamilyId(),
+                    pBuf, pData, BufferSize));
+        sdmaQueue.Wait4PacketConsumption();
+        sdmaQueue.PlaceAndSubmitPacket(SDMACopyDataPacket(sdmaQueue.GetFamilyId(),
+                    pBuf2, pData, BufferSize));
+        sdmaQueue.Wait4PacketConsumption();
+
+        /* Migrate from vram to ram
+         * CPU access the buffer migrated to vram have page fault
+         * page fault trigger migration from vram back to ram
+         * so SysBuffer should have same value as in vram
+         */
+        for (HSAuint32 i = 0; i < BufferSize / 4; i++) {
+            EXPECT_EQ(pBuf[i], i);
+            EXPECT_EQ(pBuf2[i], i);
+        }
+   }
+
+    /* If xnack off, after migrating back to ram, GPU mapping should be updated to ram
+     * test if shade can read from ram
+     * If xnack on, GPU mapping should be cleared, test if GPU vm fault can update
+     * page table and shade can read from ram.
+     */
+    sdmaQueue.PlaceAndSubmitPacket(SDMACopyDataPacket(sdmaQueue.GetFamilyId(),
+                pBuf, pData, BufferSize));
+    sdmaQueue.Wait4PacketConsumption();
+    for (HSAuint32 i = 0; i < BufferSize / 4; i++)
+        EXPECT_EQ(pBuf[i], i);
+
+    TEST_END
+}
