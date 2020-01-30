@@ -687,6 +687,86 @@ TEST_F(KFDSVMRangeTest, MigrateGranularityTest) {
         for (HSAuint32 i = 0; i < BufferPages; i++)
             EXPECT_EQ(pBuf[i * PAGE_SIZE / 4], i);
     }
+    TEST_END
+}
+
+TEST_F(KFDSVMRangeTest, MigrateLargeBufTest) {
+    TEST_REQUIRE_ENV_CAPABILITIES(ENVCAPS_64BITLINUX);
+    TEST_START(TESTPROFILE_RUNALL);
+
+    PM4Queue queue;
+    HSAuint64 AlternateVAGPU;
+    unsigned long BufferSize = 1L << 30;
+    unsigned long maxSDMASize = 128L << 20;  /* IB size is 4K */
+    unsigned long Size, i;
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    if (!GetVramSize(defaultGPUNode)) {
+        LOG() << "Skipping test: No VRAM found." << std::endl;
+        return;
+    }
+
+    HsaSVMRange SysBuffer(BufferSize, defaultGPUNode);
+    SysBuffer.Fill(0x1);
+
+    HsaSVMRange SysBuffer2(BufferSize, defaultGPUNode);
+    SysBuffer2.Fill(0x2);
+
+    /* Migrate from ram to vram
+     * using same address to register to GPU to trigger migration
+     * so LocalBuffer will have same value as SysBuffer
+     */
+    HsaSVMRange LocalBuffer(SysBuffer.As<void*>(), BufferSize, defaultGPUNode, defaultGPUNode);
+
+    SDMAQueue sdmaQueue;
+
+    ASSERT_SUCCESS(sdmaQueue.Create(defaultGPUNode));
+    for (i = 0; i < BufferSize; i += Size) {
+        Size = (BufferSize - i) > maxSDMASize ? maxSDMASize : (BufferSize - i);
+        sdmaQueue.PlaceAndSubmitPacket(SDMACopyDataPacket(sdmaQueue.GetFamilyId(),
+                    SysBuffer2.As<char*>() + i, LocalBuffer.As<char*>() + i, Size));
+        sdmaQueue.Wait4PacketConsumption();
+    }
+
+    /* Check content in migrated buffer in vram */
+    for (i = 0; i < BufferSize / 4; i += 1024)
+        EXPECT_EQ(SysBuffer2.As<unsigned int*>()[i], 0x1);
+
+    /* Change LocalBuffer content in vram, then migrate it back to ram */
+    SysBuffer2.Fill(0x3);
+
+    for (i = 0; i < BufferSize; i += Size) {
+        Size = (BufferSize - i) > maxSDMASize ? maxSDMASize : (BufferSize - i);
+        sdmaQueue.PlaceAndSubmitPacket(SDMACopyDataPacket(sdmaQueue.GetFamilyId(),
+                    LocalBuffer.As<char*>() + i, SysBuffer2.As<char*>() + i, Size));
+        sdmaQueue.Wait4PacketConsumption();
+    }
+
+    /* Migrate from vram to ram
+     * CPU access the buffer migrated to vram have page fault
+     * page fault trigger migration from vram back to ram
+     * so SysBuffer should have same value as in LocalBuffer
+     */
+    EXPECT_SUCCESS(SVMRangSetGranularity(SysBuffer.As<unsigned int*>(), BufferSize, 30));
+    for (i = 0; i < BufferSize / 4; i += 1024)
+        EXPECT_EQ(SysBuffer.As<unsigned int*>()[i], 0x3);
+
+    /* After migrating back to ram, GPU mapping should be updated to ram
+     * test if shade can read from ram
+     */
+    SysBuffer.Fill(0x4);
+
+    for (i = 0; i < BufferSize; i += Size) {
+        Size = (BufferSize - i) > maxSDMASize ? maxSDMASize : (BufferSize - i);
+        sdmaQueue.PlaceAndSubmitPacket(SDMACopyDataPacket(sdmaQueue.GetFamilyId(),
+                    SysBuffer2.As<char*>() + i, LocalBuffer.As<char*>() + i, Size));
+        sdmaQueue.Wait4PacketConsumption();
+    }
+
+    for (i = 0; i < BufferSize / 4; i += 1024)
+        EXPECT_EQ(SysBuffer2.As<unsigned int*>()[i], 0x4);
 
     TEST_END
 }
