@@ -304,3 +304,102 @@ TEST_F(KFDSVMRangeTest, SplitSystemRangeTest) {
 
     TEST_END
 }
+
+TEST_F(KFDSVMRangeTest, EvictSystemRangeTest) {
+    const HsaNodeProperties *pNodeProperties = m_NodeInfo.HsaDefaultGPUNodeProperties();
+    TEST_START(TESTPROFILE_RUNALL)
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    if (m_FamilyId < FAMILY_AI) {
+        LOG() << std::hex << "Skipping test: No svm range support for family ID 0x" << m_FamilyId << "." << std::endl;
+        return;
+    }
+
+    HSAuint32 stackData[2 * PAGE_SIZE] = {0};
+    char *pBuf = reinterpret_cast<char *>(((uint64_t)stackData + PAGE_SIZE) & ~(PAGE_SIZE - 1));
+    HSAuint32 *globalData = reinterpret_cast<uint32_t *>(pBuf);
+    const unsigned dstOffset = ((uint64_t)pBuf + 2 * PAGE_SIZE - (uint64_t)stackData) / 4;
+    const unsigned sdmaOffset = dstOffset + PAGE_SIZE;
+
+    *globalData = 0xdeadbeef;
+
+    HsaSVMRange srcBuffer((globalData), PAGE_SIZE, defaultGPUNode);
+    HsaSVMRange dstBuffer(&stackData[dstOffset], PAGE_SIZE, defaultGPUNode);
+    HsaSVMRange sdmaBuffer(&stackData[sdmaOffset], PAGE_SIZE, defaultGPUNode);
+
+    /* Create PM4 and SDMA queues before fork+COW to test queue
+     * eviction and restore
+     */
+    PM4Queue pm4Queue;
+    SDMAQueue sdmaQueue;
+    ASSERT_SUCCESS(pm4Queue.Create(defaultGPUNode));
+    ASSERT_SUCCESS(sdmaQueue.Create(defaultGPUNode));
+
+    HsaMemoryBuffer isaBuffer(PAGE_SIZE, defaultGPUNode, true/*zero*/, false/*local*/, true/*exec*/);
+    m_pIsaGen->GetCopyDwordIsa(isaBuffer);
+
+    Dispatch dispatch0(isaBuffer);
+    dispatch0.SetArgs(srcBuffer.As<void*>(), dstBuffer.As<void*>());
+    dispatch0.Submit(pm4Queue);
+    dispatch0.Sync(g_TestTimeOut);
+
+    sdmaQueue.PlaceAndSubmitPacket(SDMAWriteDataPacket(sdmaQueue.GetFamilyId(),
+                                   sdmaBuffer.As<HSAuint32 *>(), 0x12345678));
+
+    sdmaQueue.Wait4PacketConsumption();
+    EXPECT_TRUE(WaitOnValue(&stackData[sdmaOffset], 0x12345678));
+
+    /* Fork a child process to mark pages as COW */
+    pid_t pid = fork();
+    ASSERT_GE(pid, 0);
+    if (pid == 0) {
+        /* Child process waits for a SIGTERM from the parent. It can't
+         * make any write access to the stack because we want the
+         * parent to make the first write access and get a new copy. A
+         * busy loop is the safest way to do that, since any function
+         * call (e.g. sleep) would write to the stack.
+         */
+        while (1)
+        {}
+        WARN() << "Shouldn't get here!" << std::endl;
+        exit(0);
+    }
+
+    /* Parent process writes to COW page(s) and gets a new copy. MMU
+     * notifier needs to update the GPU mapping(s) for the test to
+     * pass.
+     */
+    *globalData = 0xD00BED00;
+    stackData[dstOffset] = 0xdeadbeef;
+    stackData[sdmaOffset] = 0xdeadbeef;
+
+    /* Terminate the child process before a possible test failure that
+     * would leave it spinning in the background indefinitely.
+     */
+    int status;
+    EXPECT_EQ(0, kill(pid, SIGTERM));
+    EXPECT_EQ(pid, waitpid(pid, &status, 0));
+    EXPECT_NE(0, WIFSIGNALED(status));
+    EXPECT_EQ(SIGTERM, WTERMSIG(status));
+
+    /* Now check that the GPU is accessing the correct page */
+    Dispatch dispatch1(isaBuffer);
+    dispatch1.SetArgs(srcBuffer.As<void*>(), dstBuffer.As<void*>());
+    dispatch1.Submit(pm4Queue);
+    dispatch1.Sync(g_TestTimeOut);
+
+    sdmaQueue.PlaceAndSubmitPacket(SDMAWriteDataPacket(sdmaQueue.GetFamilyId(),
+                                   sdmaBuffer.As<HSAuint32 *>(), 0xD0BED0BE));
+    sdmaQueue.Wait4PacketConsumption();
+
+    EXPECT_SUCCESS(pm4Queue.Destroy());
+    EXPECT_SUCCESS(sdmaQueue.Destroy());
+
+    EXPECT_EQ(0xD00BED00, *globalData);
+    EXPECT_EQ(0xD00BED00, stackData[dstOffset]);
+    EXPECT_EQ(0xD0BED0BE, stackData[sdmaOffset]);
+
+    TEST_END
+}
