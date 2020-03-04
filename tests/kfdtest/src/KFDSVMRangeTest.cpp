@@ -20,8 +20,9 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  *
  */
-
 #include "KFDSVMRangeTest.hpp"
+#include <sys/mman.h>
+#include <vector>
 #include "PM4Queue.hpp"
 #include "PM4Packet.hpp"
 #include "SDMAPacket.hpp"
@@ -207,6 +208,99 @@ TEST_F(KFDSVMRangeTest, InvalidRangeTest) {
 
     ret = RegisterSVMRange(defaultGPUNode, reinterpret_cast<void *>(0x10000), 0x1000, 0, Flags);
     EXPECT_NE(ret, HSAKMT_STATUS_SUCCESS);
+
+    TEST_END
+}
+
+void KFDSVMRangeTest::SplitRangeTest(int defaultGPUNode, int prefetch_location) {
+    unsigned int BufSize = 16 * PAGE_SIZE;
+
+    HsaSVMRange *sysBuffer;
+    HsaSVMRange *sysBuffer2;
+    HsaSVMRange *sysBuffer3;
+    HsaSVMRange *sysBuffer4;
+
+    void *pBuf;
+
+    // case 1
+    pBuf = mmap(0, BufSize, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    sysBuffer = new HsaSVMRange(pBuf, BufSize, defaultGPUNode, prefetch_location);
+    sysBuffer2 = new HsaSVMRange(reinterpret_cast<char *>(pBuf) + 8192, PAGE_SIZE, defaultGPUNode, prefetch_location);
+    delete sysBuffer2;
+    delete sysBuffer;
+    munmap(pBuf, BufSize);
+
+    // case 2.1
+    pBuf = mmap(0, BufSize, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    sysBuffer = new HsaSVMRange(pBuf, BufSize, defaultGPUNode, prefetch_location);
+    sysBuffer2 = new HsaSVMRange(reinterpret_cast<char *>(pBuf) + 4096, BufSize - 4096, defaultGPUNode,
+                                 prefetch_location);
+    delete sysBuffer2;
+    delete sysBuffer;
+    munmap(pBuf, BufSize);
+
+    // case 2.2
+    pBuf = mmap(0, BufSize + 8192, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    sysBuffer = new HsaSVMRange(pBuf, BufSize, defaultGPUNode, prefetch_location);
+    sysBuffer2 = new HsaSVMRange(reinterpret_cast<char *>(pBuf) + 8192, BufSize, defaultGPUNode, prefetch_location);
+    delete sysBuffer2;
+    delete sysBuffer;
+    munmap(pBuf, BufSize + 8192);
+
+    // case 3
+    pBuf = mmap(0, BufSize, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    sysBuffer = new HsaSVMRange(pBuf, BufSize, defaultGPUNode, prefetch_location);
+    sysBuffer2 = new HsaSVMRange(reinterpret_cast<char *>(pBuf), BufSize - 8192, defaultGPUNode, prefetch_location);
+    delete sysBuffer2;
+    delete sysBuffer;
+    munmap(pBuf, BufSize);
+
+    // case 4.1
+    pBuf = mmap(0, BufSize, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    sysBuffer = new HsaSVMRange(pBuf, BufSize, defaultGPUNode, prefetch_location);
+    sysBuffer2 = new HsaSVMRange(pBuf, BufSize, defaultGPUNode, prefetch_location);
+    delete sysBuffer2;
+    delete sysBuffer;
+    munmap(pBuf, BufSize);
+
+    // case 4.2
+    pBuf = mmap(0, BufSize + 8192, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    sysBuffer = new HsaSVMRange(pBuf, BufSize, defaultGPUNode, prefetch_location);
+    sysBuffer2 = new HsaSVMRange(pBuf, BufSize + 8192, defaultGPUNode, prefetch_location);
+    delete sysBuffer2;
+    delete sysBuffer;
+    munmap(pBuf, BufSize + 8192);
+
+    // case 5
+    pBuf = mmap(0, BufSize + 65536, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    sysBuffer = new HsaSVMRange(reinterpret_cast<char *>(pBuf) + 8192, 8192, defaultGPUNode, prefetch_location);
+    sysBuffer2 = new HsaSVMRange(reinterpret_cast<char *>(pBuf) + 32768, 8192, defaultGPUNode, prefetch_location);
+    sysBuffer3 = new HsaSVMRange(pBuf, BufSize + 65536, defaultGPUNode, prefetch_location);
+    delete sysBuffer2;
+    delete sysBuffer3;
+    delete sysBuffer;
+    munmap(pBuf, BufSize + 65536);
+
+    // case 6, unregister after free
+    pBuf = mmap(0, BufSize, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    sysBuffer = new HsaSVMRange(reinterpret_cast<char *>(pBuf) + 8192, 8192, defaultGPUNode, prefetch_location);
+    munmap(pBuf, BufSize);
+    delete sysBuffer;
+}
+
+TEST_F(KFDSVMRangeTest, SplitSystemRangeTest) {
+    const HsaNodeProperties *pNodeProperties = m_NodeInfo.HsaDefaultGPUNodeProperties();
+    TEST_START(TESTPROFILE_RUNALL)
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    if (m_FamilyId < FAMILY_AI) {
+        LOG() << std::hex << "Skipping test: No svm range support for family ID 0x" << m_FamilyId << "." << std::endl;
+        return;
+    }
+
+    SplitRangeTest(defaultGPUNode, 0);
 
     TEST_END
 }

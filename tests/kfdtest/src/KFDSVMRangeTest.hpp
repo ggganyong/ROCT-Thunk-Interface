@@ -33,6 +33,7 @@ class KFDSVMRangeTest : public KFDBaseComponentTest {
  public:
     KFDSVMRangeTest() :m_pIsaGen(NULL) {}
     ~KFDSVMRangeTest() {}
+    void SplitRangeTest(int defaultGPUNode, int prefetch_location);
 
  protected:
     virtual void SetUp();
