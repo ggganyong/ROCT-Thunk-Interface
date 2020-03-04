@@ -193,3 +193,20 @@ TEST_F(KFDSVMRangeTest, XNACKModeTest) {
     }
     TEST_END
 }
+
+TEST_F(KFDSVMRangeTest, InvalidRangeTest) {
+    TEST_START(TESTPROFILE_RUNALL)
+
+    HSAuint32 Flags;;
+    HSAKMT_STATUS ret;
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    Flags = HSA_SVM_FLAG_HOST_ACCESS | HSA_SVM_FLAG_COHERENT;
+
+    ret = RegisterSVMRange(defaultGPUNode, reinterpret_cast<void *>(0x10000), 0x1000, 0, Flags);
+    EXPECT_NE(ret, HSAKMT_STATUS_SUCCESS);
+
+    TEST_END
+}
