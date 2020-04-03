@@ -112,6 +112,7 @@ set ( HSAKMT_SRC "src/debug.c"
                  "src/time.c"
                  "src/topology.c"
                  "src/rbtree.c"
+                 "src/svm.c"
                  "src/version.c")
 
 ## Include paths

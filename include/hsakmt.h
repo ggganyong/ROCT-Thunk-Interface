@@ -1207,6 +1207,25 @@ hsaKmtSetMemoryUserData(
     void *          UserData    //IN
     );
 
+/* Helper functions for calling KFD SVM ioctl */
+HSAKMT_STATUS
+HSAKMTAPI
+hsaKmtSVMSetAttr(
+    void *start_addr,   // IN: Start of the virtual address range (page-aligned)
+    HSAuint64 size,     // IN: size (page-aligned)
+    unsigned int nattr, // IN: number of attributes
+    HSA_SVM_ATTRIBUTE *attrs  // IN: array of attributes
+);
+
+HSAKMT_STATUS
+HSAKMTAPI
+hsaKmtSVMGetAttr(
+    void *start_addr,   // IN: Start of the virtual address range (page-aligned)
+    HSAuint64 size,     // IN: size (page aligned)
+    unsigned int nattr, // IN: number of attributes
+    HSA_SVM_ATTRIBUTE *attrs  // IN/OUT: array of attributes
+);
+
 #ifdef __cplusplus
 }   //extern "C"
 #endif
