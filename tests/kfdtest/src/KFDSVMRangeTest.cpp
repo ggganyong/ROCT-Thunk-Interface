@@ -496,3 +496,19 @@ TEST_F(KFDSVMRangeTest, BasicVramTest) {
     EXPECT_EQ(destSysBuffer.As<unsigned int*>()[0], 0x01010101);
     TEST_END
 }
+
+TEST_F(KFDSVMRangeTest, SplitVramRangeTest) {
+    const HsaNodeProperties *pNodeProperties = m_NodeInfo.HsaDefaultGPUNodeProperties();
+    TEST_START(TESTPROFILE_RUNALL)
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    if (m_FamilyId < FAMILY_AI) {
+        LOG() << std::hex << "Skipping test: No svm range support for family ID 0x" << m_FamilyId << "." << std::endl;
+        return;
+    }
+
+    SplitRangeTest(defaultGPUNode, defaultGPUNode);
+    TEST_END
+}
