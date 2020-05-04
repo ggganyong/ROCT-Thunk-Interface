@@ -451,3 +451,48 @@ TEST_F(KFDSVMRangeTest, PartialUnmapSysMemTest) {
 
     TEST_END
 }
+
+TEST_F(KFDSVMRangeTest, BasicVramTest) {
+    TEST_REQUIRE_ENV_CAPABILITIES(ENVCAPS_64BITLINUX);
+    TEST_START(TESTPROFILE_RUNALL);
+
+    PM4Queue queue;
+    HSAuint64 AlternateVAGPU;
+    unsigned int BufferSize = PAGE_SIZE;
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    if (!GetVramSize(defaultGPUNode)) {
+        LOG() << "Skipping test: No VRAM found." << std::endl;
+        return;
+    }
+
+    HsaMemoryBuffer isaBuffer(PAGE_SIZE, defaultGPUNode);
+    HsaSVMRange srcSysBuffer(BufferSize, defaultGPUNode);
+    HsaSVMRange locBuffer(BufferSize, defaultGPUNode, defaultGPUNode);
+    HsaSVMRange destSysBuffer(BufferSize, defaultGPUNode);
+
+    srcSysBuffer.Fill(0x01010101);
+
+    m_pIsaGen->GetCopyDwordIsa(isaBuffer);
+
+    ASSERT_SUCCESS(queue.Create(defaultGPUNode));
+    queue.SetSkipWaitConsump(0);
+
+    Dispatch dispatch(isaBuffer);
+    Dispatch dispatch2(isaBuffer);
+
+    dispatch.SetArgs(srcSysBuffer.As<void*>(), locBuffer.As<void*>());
+    dispatch.Submit(queue);
+    dispatch.Sync(g_TestTimeOut);
+
+    dispatch2.SetArgs(locBuffer.As<void*>(), destSysBuffer.As<void*>());
+    dispatch2.Submit(queue);
+    dispatch2.Sync(g_TestTimeOut);
+
+    EXPECT_SUCCESS(queue.Destroy());
+
+    EXPECT_EQ(destSysBuffer.As<unsigned int*>()[0], 0x01010101);
+    TEST_END
+}
