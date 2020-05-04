@@ -403,3 +403,51 @@ TEST_F(KFDSVMRangeTest, EvictSystemRangeTest) {
 
     TEST_END
 }
+
+TEST_F(KFDSVMRangeTest, PartialUnmapSysMemTest) {
+    TEST_REQUIRE_ENV_CAPABILITIES(ENVCAPS_64BITLINUX);
+    TEST_START(TESTPROFILE_RUNALL);
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    unsigned int BufSize = 16 * PAGE_SIZE;
+    void *pBuf;
+
+    PM4Queue queue;
+    HsaMemoryBuffer isaBuffer(PAGE_SIZE, defaultGPUNode);
+    HsaSVMRange *sysBuffer;
+    HsaSVMRange destSysBuffer(BufSize, defaultGPUNode);
+
+    pBuf = mmap(0, BufSize, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    sysBuffer = new HsaSVMRange(pBuf, BufSize, defaultGPUNode, 0);
+    sysBuffer->Fill(0x01010101);
+
+    char *pBuf2 = reinterpret_cast<char *>(pBuf) + 8192;
+    unsigned int Buf2Size = 4 * PAGE_SIZE;
+    char *pBuf3 = pBuf2 + Buf2Size;
+
+    munmap(pBuf2, Buf2Size);
+
+    m_pIsaGen->GetCopyDwordIsa(isaBuffer);
+    ASSERT_SUCCESS(queue.Create(defaultGPUNode));
+
+    Dispatch dispatch(isaBuffer);
+    Dispatch dispatch2(isaBuffer);
+
+    dispatch.SetArgs(pBuf3, destSysBuffer.As<void*>());
+    dispatch.Submit(queue);
+    dispatch.Sync(g_TestTimeOut);
+    EXPECT_EQ(destSysBuffer.As<unsigned int*>()[0], 0x01010101);
+
+    dispatch2.SetArgs(pBuf, destSysBuffer.As<void*>());
+    dispatch2.Submit(queue);
+    dispatch2.Sync(g_TestTimeOut);
+
+    EXPECT_EQ(destSysBuffer.As<unsigned int*>()[0], 0x01010101);
+
+    EXPECT_SUCCESS(queue.Destroy());
+    munmap(pBuf, BufSize);
+
+    TEST_END
+}
