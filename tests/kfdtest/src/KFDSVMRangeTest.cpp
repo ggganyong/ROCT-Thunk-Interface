@@ -498,7 +498,6 @@ TEST_F(KFDSVMRangeTest, BasicVramTest) {
 }
 
 TEST_F(KFDSVMRangeTest, SplitVramRangeTest) {
-    const HsaNodeProperties *pNodeProperties = m_NodeInfo.HsaDefaultGPUNodeProperties();
     TEST_START(TESTPROFILE_RUNALL)
 
     int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
@@ -510,5 +509,40 @@ TEST_F(KFDSVMRangeTest, SplitVramRangeTest) {
     }
 
     SplitRangeTest(defaultGPUNode, defaultGPUNode);
+    TEST_END
+}
+
+TEST_F(KFDSVMRangeTest, PrefetchTest) {
+    TEST_START(TESTPROFILE_RUNALL);
+
+    unsigned int BufSize = 16 << 10;
+    HsaSVMRange *sysBuffer;
+    uint32_t node_id;
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    sysBuffer = new HsaSVMRange(BufSize, defaultGPUNode);
+    char *pBuf = sysBuffer->As<char *>();
+    /* Using invalid svm range to get prefetch node should return failed */
+    delete sysBuffer;
+    EXPECT_SUCCESS(!SVMRangeGetPrefetchNode(pBuf, BufSize, &node_id));
+
+    sysBuffer = new HsaSVMRange(BufSize, defaultGPUNode);
+    pBuf = sysBuffer->As<char *>();
+    char *pLocBuf = pBuf + BufSize / 2;
+
+    EXPECT_SUCCESS(SVMRangeGetPrefetchNode(pBuf, BufSize, &node_id));
+    EXPECT_EQ(node_id, 0);
+
+    EXPECT_SUCCESS(SVMRangePrefetchToNode(pLocBuf, BufSize / 2, defaultGPUNode));
+
+    EXPECT_SUCCESS(SVMRangeGetPrefetchNode(pLocBuf, BufSize / 2, &node_id));
+    EXPECT_EQ(node_id, defaultGPUNode);
+
+    EXPECT_SUCCESS(SVMRangeGetPrefetchNode(pBuf, BufSize, &node_id));
+    EXPECT_EQ(node_id, 0xffffffff);
+    delete sysBuffer;
+
     TEST_END
 }
