@@ -120,9 +120,7 @@ hsaKmtSVMGetAttr(void *start_addr, HSAuint64 size, unsigned int nattr,
 	memcpy(args->attrs, attrs, s_attr);
 
 	for (i = 0; i < nattr; i++) {
-		if (attrs[i].type != KFD_IOCTL_SVM_ATTR_PREFERRED_LOC &&
-		    attrs[i].type != KFD_IOCTL_SVM_ATTR_PREFETCH_LOC &&
-		    attrs[i].type != KFD_IOCTL_SVM_ATTR_ACCESS &&
+		if (attrs[i].type != KFD_IOCTL_SVM_ATTR_ACCESS &&
 		    attrs[i].type != KFD_IOCTL_SVM_ATTR_ACCESS_IN_PLACE &&
 		    attrs[i].type != KFD_IOCTL_SVM_ATTR_NO_ACCESS)
 		    continue;
