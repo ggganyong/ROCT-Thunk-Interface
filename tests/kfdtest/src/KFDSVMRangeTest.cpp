@@ -90,6 +90,78 @@ TEST_F(KFDSVMRangeTest, BasicSystemMemTest) {
     TEST_END
 }
 
+TEST_F(KFDSVMRangeTest, SetGetAttributesTest) {
+    TEST_REQUIRE_ENV_CAPABILITIES(ENVCAPS_64BITLINUX);
+    TEST_START(TESTPROFILE_RUNALL)
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    if (m_FamilyId < FAMILY_AI) {
+        LOG() << std::hex << "Skipping test: No svm range support for family ID 0x" << m_FamilyId << "." << std::endl;
+        return;
+    }
+
+    int i;
+    unsigned int BufSize = PAGE_SIZE;
+    HsaSVMRange *sysBuffer;
+    HSAuint32 nAttributes = 5;
+    HSA_SVM_ATTRIBUTE outputAttributes[nAttributes];
+    HSA_SVM_ATTRIBUTE inputAttributes[] = {
+                                                {HSA_SVM_ATTR_PREFETCH_LOC, (HSAuint32)defaultGPUNode},
+                                                {HSA_SVM_ATTR_PREFERRED_LOC, (HSAuint32)defaultGPUNode},
+                                                {HSA_SVM_ATTR_SET_FLAGS,
+                                                 HSA_SVM_FLAG_HOST_ACCESS | HSA_SVM_FLAG_GPU_EXEC | HSA_SVM_FLAG_COHERENT},
+                                                {HSA_SVM_ATTR_GRANULARITY, 0xFF},
+                                                {HSA_SVM_ATTR_ACCESS, (HSAuint32)defaultGPUNode},
+                                          };
+
+    HSAuint32 expectedDefaultResults[] = {
+                                             0,
+                                             0,
+                                             HSA_SVM_FLAG_HOST_ACCESS | HSA_SVM_FLAG_COHERENT,
+                                             9,
+                                             0,
+                                         };
+    HSAuint32 xnackNumNodes = 1;
+    HSAuint32 xnackNode[xnackNumNodes];
+    HSAint32 enable = -1;
+    EXPECT_SUCCESS(hsaKmtGetXNACKMode(&enable, &xnackNumNodes, xnackNode));
+    expectedDefaultResults[4] = (enable)?HSA_SVM_ATTR_ACCESS:HSA_SVM_ATTR_NO_ACCESS;
+    sysBuffer = new HsaSVMRange(BufSize);
+    char *pBuf = sysBuffer->As<char *>();
+
+    LOG() << "Get default atrributes" << std::endl;
+    memcpy(outputAttributes, inputAttributes, nAttributes * sizeof(HSA_SVM_ATTRIBUTE));
+    EXPECT_SUCCESS(hsaKmtSVMGetAttr(pBuf, BufSize,
+                                    nAttributes, outputAttributes));
+
+    for (i = 0; i < nAttributes; i++) {
+        if (outputAttributes[i].type == HSA_SVM_ATTR_ACCESS ||
+            outputAttributes[i].type == HSA_SVM_ATTR_ACCESS_IN_PLACE ||
+            outputAttributes[i].type == HSA_SVM_ATTR_NO_ACCESS)
+            EXPECT_EQ(outputAttributes[i].type, expectedDefaultResults[i]);
+        else
+            EXPECT_EQ(outputAttributes[i].value, expectedDefaultResults[i]);
+    }
+    LOG() << "Setting/Getting atrributes" << std::endl;
+    memcpy(outputAttributes, inputAttributes, nAttributes * sizeof(HSA_SVM_ATTRIBUTE));
+    EXPECT_SUCCESS(hsaKmtSVMSetAttr(pBuf, BufSize,
+                                    nAttributes, inputAttributes));
+    EXPECT_SUCCESS(hsaKmtSVMGetAttr(pBuf, BufSize,
+                                    nAttributes, outputAttributes));
+   for (i = 0; i < nAttributes; i++) {
+        if (outputAttributes[i].type == HSA_SVM_ATTR_ACCESS ||
+            outputAttributes[i].type == HSA_SVM_ATTR_ACCESS_IN_PLACE ||
+            outputAttributes[i].type == HSA_SVM_ATTR_NO_ACCESS)
+            EXPECT_EQ(inputAttributes[i].type, outputAttributes[i].type);
+        else
+            EXPECT_EQ(inputAttributes[i].value, outputAttributes[i].value);
+   }
+
+    TEST_END
+}
+
 TEST_F(KFDSVMRangeTest, XNACKModeTest) {
     TEST_REQUIRE_ENV_CAPABILITIES(ENVCAPS_64BITLINUX);
     TEST_START(TESTPROFILE_RUNALL);
