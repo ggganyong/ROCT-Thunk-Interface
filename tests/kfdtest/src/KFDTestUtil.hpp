@@ -128,13 +128,14 @@ HSAKMT_STATUS SVMRangeGetPrefetchNode(void *MemoryAddress, HSAuint64 SizeInBytes
                                       HSAuint32 *PrefetchNode);
 HSAKMT_STATUS SVMRangePrefetchToNode(void *MemoryAddress, HSAuint64 SizeInBytes,
                                      HSAuint32 PrefetchNode);
-
 class HsaSVMRange {
  public:
     HsaSVMRange(HSAuint64 size, HSAuint32 GPUNode);
     HsaSVMRange(HSAuint64 size, HSAuint32 GPUNode, HSAuint32 PreferredNode);
+    HsaSVMRange(HSAuint64 size);
     HsaSVMRange(void *addr, HSAuint64 size, HSAuint32 GPUNode, HSAuint32 PreferredNode = 0,
-                bool isLocal = false, bool isExec = false, bool isReadOnly = false);
+                bool noRegister = false, bool isLocal = false, bool isExec = false,
+                bool isReadOnly = false);
     template<typename RetType>
     RetType As() {
         return reinterpret_cast<RetType>(m_pUser);

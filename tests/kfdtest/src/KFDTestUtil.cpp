@@ -733,11 +733,14 @@ HSAKMT_STATUS SVMRangePrefetchToNode(void *MemoryAddress, HSAuint64 SizeInBytes,
 HsaSVMRange::HsaSVMRange(HSAuint64 size, HSAuint32 GPUNode) :
     HsaSVMRange(NULL, size, GPUNode, 0) {}
 
+HsaSVMRange::HsaSVMRange(HSAuint64 size) :
+    HsaSVMRange(NULL, size, 0, 0, true) {}
+
 HsaSVMRange::HsaSVMRange(HSAuint64 size, HSAuint32 GPUNode, HSAuint32 PrefetchNode) :
     HsaSVMRange(NULL, size, GPUNode, PrefetchNode) {}
 
 HsaSVMRange::HsaSVMRange(void *addr, HSAuint64 size, HSAuint32 GPUNode, HSAuint32 PrefetchNode,
-                         bool isLocal, bool isExec, bool isReadOnly):
+                         bool noRegister, bool isLocal, bool isExec, bool isReadOnly):
     m_Size(size),
     m_pUser(addr),
     m_Local(isLocal),
@@ -759,7 +762,8 @@ HsaSVMRange::HsaSVMRange(void *addr, HSAuint64 size, HSAuint32 GPUNode, HSAuint3
     if (isExec)
         m_Flags |= HSA_SVM_FLAG_GPU_EXEC;
 
-    EXPECT_SUCCESS(RegisterSVMRange(GPUNode, m_pUser, m_Size, PrefetchNode, m_Flags, 0));
+    if (!noRegister)
+        EXPECT_SUCCESS(RegisterSVMRange(GPUNode, m_pUser, m_Size, PrefetchNode, m_Flags, 0));
 }
 
 HsaSVMRange::~HsaSVMRange() {
