@@ -197,7 +197,8 @@ FILTER[arcturus]=\
 "$BLACKLIST_ALL_ASICS:"\
 "KFDExceptionTest.FaultStorm:"\
 "KFDQMTest.BasicCuMaskingEven:"\
-"KFDEvictTest.BurstyTest"
+"KFDEvictTest.BurstyTest:"\
+"KFDMemoryTest.PtraceAccessInvisibleVram"
 
 FILTER[navi10]=\
 "$BLACKLIST_ALL_ASICS:"\
