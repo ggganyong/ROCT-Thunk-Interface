@@ -1226,6 +1226,14 @@ hsaKmtSVMGetAttr(
     HSA_SVM_ATTRIBUTE *attrs  // IN/OUT: array of attributes
 );
 
+HSAKMT_STATUS
+HSAKMTAPI
+hsaKmtSetXNACKMode(
+    bool enable,  // IN: enable XNACK node
+    HSAuint32 *	NumberOfNodes,  // IN: NodeArray size, OUT: Number of supported nodes
+    HSAuint32 *	NodeArray  // OUT: Array of supported nodes with given mode
+);
+
 #ifdef __cplusplus
 }   //extern "C"
 #endif

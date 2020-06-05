@@ -161,3 +161,35 @@ hsaKmtSVMGetAttr(void *start_addr, HSAuint64 size, unsigned int nattr,
 
 	return HSAKMT_STATUS_SUCCESS;
 }
+
+HSAKMT_STATUS HSAKMTAPI
+hsaKmtSetXNACKMode(bool enable,
+		 HSAuint32 * NumberOfNodes, HSAuint32 * NodeArray)
+{
+	struct kfd_ioctl_set_xnack_mode_args args;
+	HSAKMT_STATUS r;
+	HSAuint32 i;
+
+	CHECK_KFD_OPEN();
+
+	args.ptr_supported_gpuids = (uint64_t)NodeArray;
+	args.xnack_enabled = enable;
+	args.n_supported_gpuids = *NumberOfNodes;
+
+	r = kmtIoctl(kfd_fd, AMDKFD_IOC_SET_XNACK_MODE, &args);
+	if (r) {
+		pr_debug("set xnack failed %s\n", strerror(errno));
+		return HSAKMT_STATUS_ERROR;
+	}
+
+	*NumberOfNodes = args.n_supported_gpuids;
+	for (i = 0; i < *NumberOfNodes; i++) {
+		r = gpuid_to_nodeid(NodeArray[i], &NodeArray[i]);
+		if (r != HSAKMT_STATUS_SUCCESS) {
+			pr_debug("invalid GPU ID: %d\n", NodeArray[i]);
+			return r;
+		}
+	}
+
+	return HSAKMT_STATUS_SUCCESS;
+}
