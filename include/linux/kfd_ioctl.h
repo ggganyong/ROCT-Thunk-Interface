@@ -705,6 +705,47 @@ struct kfd_ioctl_svm_args {
 	struct kfd_ioctl_svm_attribute attrs[0];
 };
 
+/**
+ * kfd_ioctl_set_xnack_mode_args - Arguments for set_xnack_mode
+ *
+ * @xnack_enabled:         [in] Whether to enable XNACK mode for this process
+ * @n_supported_gpuids:    [in/out] Number of GPUs that support requested mode
+ * @ptr_supported_gpuids:  [in] Pointer to array of gpuids
+ *
+ * @xnack_enabled indicates whether recoverable page faults should be
+ * enabled for the current process. 0 means disabled, non-0 means
+ * enabled. If enabled, virtual address translations on GFXv9 and
+ * later AMD GPUs can return XNACK and retry the access until a valid
+ * PTE is available. This is used to implement device page faults.
+ *
+ * This fundamentally changes the way SVM managed memory works in the
+ * driver, with subtle effects on application performance and
+ * functionality.
+ *
+ * Enabling XNACK mode requires shader programs to be compiled
+ * differently.  Furthermore, not all GPUs support changing the mode
+ * per-process. Therefore changing the mode is only allowed while no
+ * user mode queues exist in the process. This ensure that no shader
+ * code is running that may be compiled for the wrong mode. And GPUs
+ * that cannot change to the requested mode will be disabled by
+ * failing subsequent requests to create user mode queues.
+ *
+ * This ioctl returns the set of GPUs that support the requested mode
+ * in the array pointed to by @ptr_supported_gpuids. Note that the
+ * pointer is an input parameter, but the array is used as an output.
+ * The caller should set @n_supported_gpuids to the size of the array.
+ * When the function returns, @n_supported_gpuids will indicate the
+ * number of gpuid entries that were actually filled. It may be 0 if
+ * there are no GPUs in the system that support the requested mode.
+ *
+ * Return: 0 on success, -errno on failure
+ */
+struct kfd_ioctl_set_xnack_mode_args {
+	__u64 ptr_supported_gpuids;
+	__u32 xnack_enabled;
+	__u32 n_supported_gpuids;
+};
+
 #define AMDKFD_IOCTL_BASE 'K'
 #define AMDKFD_IO(nr)			_IO(AMDKFD_IOCTL_BASE, nr)
 #define AMDKFD_IOR(nr, type)		_IOR(AMDKFD_IOCTL_BASE, nr, type)
@@ -804,19 +845,22 @@ struct kfd_ioctl_svm_args {
 
 #define AMDKFD_IOC_SVM	AMDKFD_IOWR(0x1F, struct kfd_ioctl_svm_args)
 
+#define AMDKFD_IOC_SET_XNACK_MODE		\
+		AMDKFD_IOWR(0x20, struct kfd_ioctl_set_xnack_mode_args)
+
 #define AMDKFD_IOC_IPC_IMPORT_HANDLE                                    \
-		AMDKFD_IOWR(0x20, struct kfd_ioctl_ipc_import_handle_args)
+		AMDKFD_IOWR(0x21, struct kfd_ioctl_ipc_import_handle_args)
 
 #define AMDKFD_IOC_IPC_EXPORT_HANDLE		\
-		AMDKFD_IOWR(0x21, struct kfd_ioctl_ipc_export_handle_args)
+		AMDKFD_IOWR(0x22, struct kfd_ioctl_ipc_export_handle_args)
 
 #define AMDKFD_IOC_DBG_TRAP			\
-		AMDKFD_IOWR(0x22, struct kfd_ioctl_dbg_trap_args)
+		AMDKFD_IOWR(0x23, struct kfd_ioctl_dbg_trap_args)
 
 #define AMDKFD_IOC_CROSS_MEMORY_COPY		\
-		AMDKFD_IOWR(0x23, struct kfd_ioctl_cross_memory_copy_args)
+		AMDKFD_IOWR(0x24, struct kfd_ioctl_cross_memory_copy_args)
 
 #define AMDKFD_COMMAND_START		0x01
-#define AMDKFD_COMMAND_END		0x24
+#define AMDKFD_COMMAND_END		0x25
 
 #endif
