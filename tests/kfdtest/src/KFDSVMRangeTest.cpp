@@ -89,3 +89,31 @@ TEST_F(KFDSVMRangeTest, BasicSystemMemTest) {
 
     TEST_END
 }
+
+TEST_F(KFDSVMRangeTest, XNACKModeTest) {
+    TEST_REQUIRE_ENV_CAPABILITIES(ENVCAPS_64BITLINUX);
+    TEST_START(TESTPROFILE_RUNALL);
+
+    HSAuint32 i, j;
+    PM4Queue queue;
+
+    for (i = 0; i < 2; i++) {
+        HSAuint32 NumberOfNodes = 10;
+        HSAuint32 NodeArray[NumberOfNodes];
+        bool enable = i;
+        EXPECT_SUCCESS(hsaKmtSetXNACKMode(enable, &NumberOfNodes, NodeArray));
+
+        LOG() << "XNACK " << std::boolalpha << enable <<
+              " No. gpuids found: " << std::dec << NumberOfNodes << std::endl;
+
+        for (j = 0; j < NumberOfNodes; j++) {
+            LOG() << "Creating queue and try to set xnack mode on node: "
+                  << NodeArray[j] << std::endl;
+            ASSERT_SUCCESS(queue.Create(NodeArray[j]));
+            EXPECT_NE(HSAKMT_STATUS_SUCCESS,
+                      hsaKmtSetXNACKMode(enable, &NumberOfNodes, NodeArray));
+            EXPECT_SUCCESS(queue.Destroy());
+        }
+    }
+    TEST_END
+}
