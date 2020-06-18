@@ -620,3 +620,75 @@ TEST_F(KFDSVMRangeTest, MigrateTest) {
 
     TEST_END
 }
+
+/*
+ * The test changes migration granularity, then trigger CPU page fault to migrate
+ * the svm range from vram to ram.
+ * Check the dmesg driver output to confirm the number of CPU page fault is correct
+ * based on granularity.
+ *
+ * For example, this is BufferPages = 5, while granularity change from 2 to 0
+ * [  292.623498] amdgpu:svm_migrate_to_ram:744: CPU page fault address 0x7f22597ee000
+ * [  292.623727] amdgpu:svm_migrate_to_ram:744: CPU page fault address 0x7f22597f0000
+ * [  292.724414] amdgpu:svm_migrate_to_ram:744: CPU page fault address 0x7f22597ee000
+ * [  292.724824] amdgpu:svm_migrate_to_ram:744: CPU page fault address 0x7f22597f0000
+ * [  292.725094] amdgpu:svm_migrate_to_ram:744: CPU page fault address 0x7f22597f2000
+ * [  292.728186] amdgpu:svm_migrate_to_ram:744: CPU page fault address 0x7f22597ee000
+ * [  292.729171] amdgpu:svm_migrate_to_ram:744: CPU page fault address 0x7f22597ef000
+ * [  292.729576] amdgpu:svm_migrate_to_ram:744: CPU page fault address 0x7f22597f0000
+ * [  292.730010] amdgpu:svm_migrate_to_ram:744: CPU page fault address 0x7f22597f1000
+ * [  292.730931] amdgpu:svm_migrate_to_ram:744: CPU page fault address 0x7f22597f2000
+ */
+TEST_F(KFDSVMRangeTest, MigrateGranularityTest) {
+    TEST_REQUIRE_ENV_CAPABILITIES(ENVCAPS_64BITLINUX);
+    TEST_START(TESTPROFILE_RUNALL);
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    if (m_FamilyId < FAMILY_AI) {
+        LOG() << std::hex << "Skipping test: No svm range support for family ID 0x" << m_FamilyId << "." << std::endl;
+            return;
+        }
+
+    if (!GetVramSize(defaultGPUNode)) {
+        LOG() << "Skipping test: No VRAM found." << std::endl;
+        return;
+    }
+
+    HSAuint64 BufferPages = 16384;
+    HSAuint64 BufferSize = BufferPages * PAGE_SIZE;
+    HsaSVMRange SysBuffer(BufferSize, defaultGPUNode);
+    HSAint32 *pBuf = SysBuffer.As<HSAint32*>();
+
+    HsaSVMRange SysBuffer2(BufferSize, defaultGPUNode);
+    HSAint32 *pBuf2 = SysBuffer2.As<HSAint32*>();
+
+    HSAint32 Granularity;
+
+    SDMAQueue sdmaQueue;
+    ASSERT_SUCCESS(sdmaQueue.Create(defaultGPUNode));
+
+    for (Granularity = 0; (1ULL << Granularity) <= BufferPages; Granularity++);
+    for (HSAuint32 i = 0; i < BufferPages; i++)
+        pBuf2[i * PAGE_SIZE / 4] = i;
+
+    while (Granularity--) {
+        /* Prefetch the entire range to vram */
+        EXPECT_SUCCESS(SVMRangePrefetchToNode(pBuf, BufferSize, defaultGPUNode));
+        EXPECT_SUCCESS(SVMRangSetGranularity(pBuf, BufferSize, Granularity));
+
+        /* Change Buffer content in vram, then migrate it back to ram */
+        sdmaQueue.PlaceAndSubmitPacket(SDMACopyDataPacket(sdmaQueue.GetFamilyId(),
+                        pBuf, pBuf2, BufferSize));
+        sdmaQueue.Wait4PacketConsumption();
+
+        /* Migrate from vram to ram */
+        for (HSAuint32 i = 0; i < BufferPages; i++)
+            EXPECT_EQ(pBuf[i * PAGE_SIZE / 4], i);
+    }
+
+    TEST_END
+}
+
+
