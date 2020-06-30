@@ -162,9 +162,9 @@ hsaKmtSVMGetAttr(void *start_addr, HSAuint64 size, unsigned int nattr,
 	return HSAKMT_STATUS_SUCCESS;
 }
 
-HSAKMT_STATUS HSAKMTAPI
-hsaKmtSetXNACKMode(bool enable,
-		 HSAuint32 * NumberOfNodes, HSAuint32 * NodeArray)
+static HSAKMT_STATUS
+hsaKmtSetGetXNACKMode(HSAint32 * enable,
+		      HSAuint32 * NumberOfNodes, HSAuint32 * NodeArray)
 {
 	struct kfd_ioctl_set_xnack_mode_args args;
 	HSAKMT_STATUS r;
@@ -173,15 +173,16 @@ hsaKmtSetXNACKMode(bool enable,
 	CHECK_KFD_OPEN();
 
 	args.ptr_supported_gpuids = (uint64_t)NodeArray;
-	args.xnack_enabled = enable;
+	args.xnack_enabled = *enable;
 	args.n_supported_gpuids = *NumberOfNodes;
 
 	r = kmtIoctl(kfd_fd, AMDKFD_IOC_SET_XNACK_MODE, &args);
 	if (r) {
-		pr_debug("set xnack failed %s\n", strerror(errno));
+		pr_debug("kmtIoctl xnack failed %s\n", strerror(errno));
 		return HSAKMT_STATUS_ERROR;
 	}
 
+	*enable = args.xnack_enabled;
 	*NumberOfNodes = args.n_supported_gpuids;
 	for (i = 0; i < *NumberOfNodes; i++) {
 		r = gpuid_to_nodeid(NodeArray[i], &NodeArray[i]);
@@ -192,4 +193,19 @@ hsaKmtSetXNACKMode(bool enable,
 	}
 
 	return HSAKMT_STATUS_SUCCESS;
+}
+
+HSAKMT_STATUS HSAKMTAPI
+hsaKmtSetXNACKMode(HSAint32 enable,
+		 HSAuint32 * NumberOfNodes, HSAuint32 * NodeArray)
+{
+	return hsaKmtSetGetXNACKMode(&enable, NumberOfNodes, NodeArray);
+}
+
+HSAKMT_STATUS HSAKMTAPI
+hsaKmtGetXNACKMode(HSAint32 * enable,
+		 HSAuint32 * NumberOfNodes, HSAuint32 * NodeArray)
+{
+	*enable = -1;
+	return hsaKmtSetGetXNACKMode(enable, NumberOfNodes, NodeArray);
 }

@@ -72,6 +72,7 @@ hsaKmtGetThunkDebugTrapVersionInfo;
 hsaKmtSVMSetAttr;
 hsaKmtSVMGetAttr;
 hsaKmtSetXNACKMode;
+hsaKmtGetXNACKMode;
 local: *;
 };
 

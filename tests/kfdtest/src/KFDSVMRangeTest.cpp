@@ -96,11 +96,15 @@ TEST_F(KFDSVMRangeTest, XNACKModeTest) {
 
     HSAuint32 i, j;
     PM4Queue queue;
+    HSAuint32 NumberOfNodes = 10;
+    HSAuint32 NodeArray[NumberOfNodes];
+    HSAint32 enable = 0;
 
+    EXPECT_SUCCESS(hsaKmtGetXNACKMode(&enable, &NumberOfNodes, NodeArray));
     for (i = 0; i < 2; i++) {
-        HSAuint32 NumberOfNodes = 10;
-        HSAuint32 NodeArray[NumberOfNodes];
-        bool enable = i;
+        enable = !enable;
+        NumberOfNodes = 10;
+        NodeArray[NumberOfNodes];
         EXPECT_SUCCESS(hsaKmtSetXNACKMode(enable, &NumberOfNodes, NodeArray));
 
         LOG() << "XNACK " << std::boolalpha << enable <<
