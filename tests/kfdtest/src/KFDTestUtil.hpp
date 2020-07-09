@@ -123,7 +123,7 @@ class HsaMemoryBuffer {
 };
 HSAKMT_STATUS RegisterSVMRange(HSAuint32 GPUNode, void *MemoryAddress,
                                HSAuint64 SizeInBytes, HSAuint32 PrefetchNode,
-                               HSAuint32 SVMFlags, HSAuint32 Granularity);
+                               HSAuint32 SVMFlags);
 HSAKMT_STATUS SVMRangeGetPrefetchNode(void *MemoryAddress, HSAuint64 SizeInBytes,
                                       HSAuint32 *PrefetchNode);
 HSAKMT_STATUS SVMRangePrefetchToNode(void *MemoryAddress, HSAuint64 SizeInBytes,

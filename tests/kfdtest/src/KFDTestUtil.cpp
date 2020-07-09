@@ -664,13 +664,13 @@ int HsaNodeInfo::FindAccessiblePeers(std::vector<HSAuint32> *peers, HSAuint32 ds
 
 HSAKMT_STATUS RegisterSVMRange(HSAuint32 GPUNode, void *MemoryAddress,
                                HSAuint64 SizeInBytes, HSAuint32 PrefetchNode,
-                               HSAuint32 SVMFlags, HSAuint32 Granularity) {
+                               HSAuint32 SVMFlags) {
     HSA_SVM_ATTRIBUTE *attrs;
     HSAuint64 s_attr;
     HSAuint32 nattr;
     HSAKMT_STATUS r;
 
-    nattr = 5;
+    nattr = 4;
     s_attr = sizeof(*attrs) * nattr;
     attrs = (HSA_SVM_ATTRIBUTE *)alloca(s_attr);
 
@@ -680,10 +680,8 @@ HSAKMT_STATUS RegisterSVMRange(HSAuint32 GPUNode, void *MemoryAddress,
     attrs[1].value = PrefetchNode;
     attrs[2].type = HSA_SVM_ATTR_SET_FLAGS;
     attrs[2].value = SVMFlags;
-    attrs[3].type = HSA_SVM_ATTR_GRANULARITY;
-    attrs[3].value = Granularity;
-    attrs[4].type = HSA_SVM_ATTR_ACCESS;
-    attrs[4].value = GPUNode;
+    attrs[3].type = HSA_SVM_ATTR_ACCESS;
+    attrs[3].value = GPUNode;
 
     r = hsaKmtSVMSetAttr(MemoryAddress, SizeInBytes, nattr, attrs);
     if (r) {
@@ -763,7 +761,7 @@ HsaSVMRange::HsaSVMRange(void *addr, HSAuint64 size, HSAuint32 GPUNode, HSAuint3
         m_Flags |= HSA_SVM_FLAG_GPU_EXEC;
 
     if (!noRegister)
-        EXPECT_SUCCESS(RegisterSVMRange(GPUNode, m_pUser, m_Size, PrefetchNode, m_Flags, 0));
+        EXPECT_SUCCESS(RegisterSVMRange(GPUNode, m_pUser, m_Size, PrefetchNode, m_Flags));
 }
 
 HsaSVMRange::~HsaSVMRange() {
