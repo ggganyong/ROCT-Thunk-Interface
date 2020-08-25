@@ -124,10 +124,8 @@ TEST_F(KFDSVMRangeTest, SetGetAttributesTest) {
                                              9,
                                              0,
                                          };
-    HSAuint32 xnackNumNodes = 1;
-    HSAuint32 xnackNode[xnackNumNodes];
     HSAint32 enable = -1;
-    EXPECT_SUCCESS(hsaKmtGetXNACKMode(&enable, &xnackNumNodes, xnackNode));
+    EXPECT_SUCCESS(hsaKmtGetXNACKMode(&enable));
     expectedDefaultResults[4] = (enable)?HSA_SVM_ATTR_ACCESS:HSA_SVM_ATTR_NO_ACCESS;
     sysBuffer = new HsaSVMRange(BufSize);
     char *pBuf = sysBuffer->As<char *>();
@@ -168,28 +166,30 @@ TEST_F(KFDSVMRangeTest, XNACKModeTest) {
     TEST_START(TESTPROFILE_RUNALL);
 
     HSAuint32 i, j;
+    HSAint32 r;
     PM4Queue queue;
-    HSAuint32 NumberOfNodes = 10;
-    HSAuint32 NodeArray[NumberOfNodes];
     HSAint32 enable = 0;
+    const std::vector<int> gpuNodes = m_NodeInfo.GetNodesWithGPU();
 
-    EXPECT_SUCCESS(hsaKmtGetXNACKMode(&enable, &NumberOfNodes, NodeArray));
+    EXPECT_SUCCESS(hsaKmtGetXNACKMode(&enable));
     for (i = 0; i < 2; i++) {
         enable = !enable;
-        NumberOfNodes = 10;
-        NodeArray[NumberOfNodes];
-        EXPECT_SUCCESS(hsaKmtSetXNACKMode(enable, &NumberOfNodes, NodeArray));
+        r = hsaKmtSetXNACKMode(enable);
+        if (r == HSAKMT_STATUS_SUCCESS) {
+            LOG() << "XNACK mode: " << std::boolalpha << enable <<
+                     " supported" << std::endl;
 
-        LOG() << "XNACK " << std::boolalpha << enable <<
-              " No. gpuids found: " << std::dec << NumberOfNodes << std::endl;
-
-        for (j = 0; j < NumberOfNodes; j++) {
-            LOG() << "Creating queue and try to set xnack mode on node: "
-                  << NodeArray[j] << std::endl;
-            ASSERT_SUCCESS(queue.Create(NodeArray[j]));
-            EXPECT_NE(HSAKMT_STATUS_SUCCESS,
-                      hsaKmtSetXNACKMode(enable, &NumberOfNodes, NodeArray));
-            EXPECT_SUCCESS(queue.Destroy());
+            for (j = 0; j < gpuNodes.size(); j++) {
+                LOG() << "Creating queue and try to set xnack mode on node: "
+                      << gpuNodes.at(j) << std::endl;
+                ASSERT_SUCCESS(queue.Create(gpuNodes.at(j)));
+                EXPECT_EQ(HSAKMT_STATUS_ERROR,
+                        hsaKmtSetXNACKMode(enable));
+                EXPECT_SUCCESS(queue.Destroy());
+            }
+        } else if (r == HSAKMT_STATUS_NOT_SUPPORTED) {
+            LOG() << "XNACK mode: " << std::boolalpha << enable <<
+                     " NOT supported" << std::endl;
         }
     }
     TEST_END
