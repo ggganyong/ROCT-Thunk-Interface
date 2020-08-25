@@ -708,9 +708,7 @@ struct kfd_ioctl_svm_args {
 /**
  * kfd_ioctl_set_xnack_mode_args - Arguments for set_xnack_mode
  *
- * @xnack_enabled:         [in/out] Whether to enable XNACK mode for this process
- * @n_supported_gpuids:    [in/out] Number of GPUs that support requested mode
- * @ptr_supported_gpuids:  [in] Pointer to array of gpuids
+ * @xnack_enabled:       [in/out] Whether to enable XNACK mode for this process
  *
  * @xnack_enabled indicates whether recoverable page faults should be
  * enabled for the current process. 0 means disabled, positive means
@@ -735,26 +733,14 @@ struct kfd_ioctl_svm_args {
  * that cannot change to the requested mode will be disabled by
  * failing subsequent requests to create user mode queues.
  *
- * This ioctl returns the set of GPUs that support the requested mode
- * in the array pointed to by @ptr_supported_gpuids. Note that the
- * pointer is an input parameter, but the array is used as an output.
- * The caller should set @n_supported_gpuids to the size of the array.
- * When the function returns, @n_supported_gpuids will indicate the
- * number of gpuid entries that were actually filled. It may be 0 if
- * there are no GPUs in the system that support the requested mode.
+ * This ioctl returns the status of the requested xnack mode.
  *
  * GFXv8 or older GPUs do not support 48 bit virtual addresses or SVM.
- * This ioctl has no effect on the behaviour of those GPUs. Because
- * of that, these GPUs are always considered as supporting the
- * requested mode, and are always included in the  @ptr_supported_gpuids
- * array.
  *
  * Return: 0 on success, -errno on failure
  */
 struct kfd_ioctl_set_xnack_mode_args {
-	__u64 ptr_supported_gpuids;
 	__s32 xnack_enabled;
-	__u32 n_supported_gpuids;
 };
 
 #define AMDKFD_IOCTL_BASE 'K'

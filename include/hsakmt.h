@@ -1229,17 +1229,13 @@ hsaKmtSVMGetAttr(
 HSAKMT_STATUS
 HSAKMTAPI
 hsaKmtSetXNACKMode(
-    HSAint32 enable,  // IN: enable/disable XNACK node.
-    HSAuint32 *	NumberOfNodes,  // IN: NodeArray size, OUT: Number of supported nodes
-    HSAuint32 *	NodeArray  // OUT: Array of supported nodes with given mode
+    HSAint32 enable  // IN: enable/disable XNACK node.
 );
 
 HSAKMT_STATUS
 HSAKMTAPI
 hsaKmtGetXNACKMode(
-    HSAint32 * enable,  // OUT: returns XNACK value.
-    HSAuint32 *	NumberOfNodes,  // OUT: Number of supported nodes
-    HSAuint32 *	NodeArray  // OUT: Array of supported nodes with given mode
+    HSAint32 * enable  // OUT: returns XNACK value.
 );
 
 #ifdef __cplusplus
