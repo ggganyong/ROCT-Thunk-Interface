@@ -771,4 +771,86 @@ TEST_F(KFDSVMRangeTest, MigrateLargeBufTest) {
     TEST_END
 }
 
+TEST_F(KFDSVMRangeTest, MigratePolicyTest) {
+    TEST_REQUIRE_ENV_CAPABILITIES(ENVCAPS_64BITLINUX);
+    TEST_START(TESTPROFILE_RUNALL);
 
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    if (m_FamilyId < FAMILY_AI) {
+        LOG() << std::hex << "Skipping test: No svm range support for family ID 0x" << m_FamilyId << "." << std::endl;
+        return;
+    }
+
+    if (!GetVramSize(defaultGPUNode)) {
+        LOG() << "Skipping test: No VRAM found." << std::endl;
+        return;
+    }
+
+    unsigned long BufferSize = 1UL << 20;
+
+    HsaSVMRange DataBuffer(BufferSize, defaultGPUNode);
+    HSAuint64 *pData = DataBuffer.As<HSAuint64 *>();
+
+    HsaSVMRange SysBuffer(BufferSize, defaultGPUNode);
+    HSAuint64 *pBuf = SysBuffer.As<HSAuint64 *>();
+
+    SDMAQueue sdmaQueue;
+    ASSERT_SUCCESS(sdmaQueue.Create(defaultGPUNode));
+
+    for (HSAuint64 i = 0; i < BufferSize / 8; i++)
+        pData[i] = i;
+
+    /* Prefetch to migrate from ram to vram */
+    EXPECT_SUCCESS(SVMRangePrefetchToNode(pBuf, BufferSize, defaultGPUNode));
+
+    /* Update content in migrated buffer in vram */
+    sdmaQueue.PlaceAndSubmitPacket(SDMACopyDataPacket(sdmaQueue.GetFamilyId(),
+                pBuf, pData, BufferSize));
+    sdmaQueue.Wait4PacketConsumption(NULL, HSA_EVENTTIMEOUT_INFINITE);
+
+    /* Migrate from vram to ram
+     * CPU access the buffer migrated to vram have page fault
+     * page fault trigger migration from vram back to ram
+     * so SysBuffer should have same value as in vram
+     */
+    for (HSAuint64 i = 0; i < BufferSize / 8; i++) {
+        EXPECT_EQ(pBuf[i], i);
+        /* Update buf */
+        pBuf[i] = i + 1;
+    }
+
+    /* Migrate from ram to vram if xnack on
+     * If xnack off, after migrating back to ram, GPU mapping should be updated to ram
+     * test if shade can read from ram
+     * If xnack on, GPU mapping should be cleared, test if GPU vm fault can update
+     * page table and shade can read from ram.
+     */
+//#define USE_PM4_QUEUE_TRIGGER_VM_FAULT
+#ifdef USE_PM4_QUEUE_TRIGGER_VM_FAULT
+    HsaMemoryBuffer isaBuffer(PAGE_SIZE, defaultGPUNode);
+    PM4Queue queue;
+    m_pIsaGen->GetCopyDwordIsa(isaBuffer);
+    ASSERT_SUCCESS(queue.Create(defaultGPUNode));
+
+    for (HSAuint64 i = 0; i < BufferSize / 8; i += 512) {
+        Dispatch dispatch(isaBuffer);
+        
+        dispatch.SetArgs(pBuf + i, pData + i);
+        dispatch.Submit(queue);
+        dispatch.Sync(HSA_EVENTTIMEOUT_INFINITE);
+    }
+#else
+    sdmaQueue.PlaceAndSubmitPacket(SDMACopyDataPacket(sdmaQueue.GetFamilyId(),
+                pData, pBuf, BufferSize));
+    sdmaQueue.Wait4PacketConsumption(NULL, HSA_EVENTTIMEOUT_INFINITE);
+#endif
+
+    for (HSAuint64 i = 0; i < BufferSize / 8; i += 512)
+        EXPECT_EQ(pData[i], i + 1);
+
+    ASSERT_SUCCESS(sdmaQueue.Destroy());
+
+    TEST_END
+}
