@@ -854,3 +854,75 @@ TEST_F(KFDSVMRangeTest, MigratePolicyTest) {
 
     TEST_END
 }
+
+/* Multiple GPU migration test
+ *
+ * Steps:
+ *     1. Prefetch pBuf, pData to all GPUs, to test migration from GPU to GPU
+ *     2. Use sdma queue on all GPUs, to copy data from pBuf to pData
+ *     3. Check pData data
+ *
+ * Notes:
+ *     With xnack on, step 2 will have retry fault on pBuf, to migrate from GPU to GPU,
+ *     retry fault on pData, to migrate from CPU to GPU
+ *
+ *     With xnack off, pBuf and pData should prefetch to CPU to ensure multiple GPU access
+ *
+ *     step3 migrate pData from GPU to CPU
+ *
+ * Test will skip if only one GPU found
+ */
+TEST_F(KFDSVMRangeTest, MultiGPUMigrationTest) {
+    TEST_REQUIRE_ENV_CAPABILITIES(ENVCAPS_64BITLINUX);
+    TEST_START(TESTPROFILE_RUNALL);
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    if (m_FamilyId < FAMILY_AI) {
+        LOG() << std::hex << "Skipping test: No svm range support for family ID 0x" << m_FamilyId << "." << std::endl;
+        return;
+    }
+
+    const std::vector<int> gpuNodes = m_NodeInfo.GetNodesWithGPU();
+    if (gpuNodes.size() < 2) {
+        LOG() << "Skipping test: at least two GPUs needed." << std::endl;
+        return;
+    }
+
+    unsigned long BufferSize = 1UL << 20;
+
+    HsaSVMRange SysBuffer(BufferSize, defaultGPUNode);
+    HSAuint64 *pBuf = SysBuffer.As<HSAuint64 *>();
+    HsaSVMRange DataBuffer(BufferSize, defaultGPUNode);
+    HSAuint64 *pData = DataBuffer.As<HSAuint64 *>();
+
+    SDMAQueue sdmaQueue;
+
+    for (HSAuint64 i = 0; i < BufferSize / 8; i++)
+        pBuf[i] = i;
+
+    for (HSAuint64 gpuidx = 0; gpuidx < gpuNodes.size(); gpuidx++) {
+        EXPECT_SUCCESS(SVMRangeMapToNode(pBuf, BufferSize, gpuNodes.at(gpuidx)));
+        EXPECT_SUCCESS(SVMRangePrefetchToNode(pBuf, BufferSize, gpuNodes.at(gpuidx)));
+
+        EXPECT_SUCCESS(SVMRangeMapToNode(pData, BufferSize, gpuNodes.at(gpuidx)));
+        EXPECT_SUCCESS(SVMRangePrefetchToNode(pData, BufferSize, gpuNodes.at(gpuidx)));
+    }
+
+    for (HSAuint64 gpuidx = 0; gpuidx < gpuNodes.size(); gpuidx++) {
+        ASSERT_SUCCESS(sdmaQueue.Create(gpuNodes.at(gpuidx)));
+
+        sdmaQueue.PlaceAndSubmitPacket(SDMACopyDataPacket(sdmaQueue.GetFamilyId(),
+                    pData, pBuf, BufferSize));
+        sdmaQueue.Wait4PacketConsumption();
+
+        for (HSAuint64 i = 0; i < BufferSize / 8; i += 512)
+            EXPECT_EQ(pData[i], i);
+
+        EXPECT_SUCCESS(sdmaQueue.Destroy());
+    }
+
+    TEST_END
+}
+

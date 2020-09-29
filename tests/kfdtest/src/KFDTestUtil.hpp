@@ -128,6 +128,8 @@ HSAKMT_STATUS SVMRangeGetPrefetchNode(void *MemoryAddress, HSAuint64 SizeInBytes
                                       HSAuint32 *PrefetchNode);
 HSAKMT_STATUS SVMRangePrefetchToNode(void *MemoryAddress, HSAuint64 SizeInBytes,
                                      HSAuint32 PrefetchNode);
+HSAKMT_STATUS SVMRangeMapToNode(void *MemoryAddress, HSAuint64 SizeInBytes,
+                                     HSAuint32 NodeID);
 HSAKMT_STATUS SVMRangSetGranularity(void *MemoryAddress, HSAuint64 SizeInBytes,
                                     HSAuint32 Granularity);
 
