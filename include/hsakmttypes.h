@@ -1300,7 +1300,8 @@ typedef enum _HSA_SVM_FLAGS {
 
 typedef enum _HSA_SVM_ATTR_TYPE {
 	HSA_SVM_ATTR_PREFERRED_LOC,  // gpuid of the preferred location, 0 for
-                                     // system memory
+                                     // system memory, INVALID_NODEID for
+                                     // "don't care"
 	HSA_SVM_ATTR_PREFETCH_LOC,   // gpuid of the prefetch location, 0 for
                                      // system memory. Setting this triggers an
                                      // immediate prefetch (migration)

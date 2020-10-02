@@ -73,6 +73,12 @@ hsaKmtSVMSetAttr(void *start_addr, HSAuint64 size, unsigned int nattr,
 		    attrs[i].type != KFD_IOCTL_SVM_ATTR_NO_ACCESS)
 		    continue;
 
+		if (attrs[i].type == KFD_IOCTL_SVM_ATTR_PREFERRED_LOC &&
+		    attrs[i].value == INVALID_NODEID) {
+			args->attrs[i].value = KFD_IOCTL_SVM_LOCATION_UNDEFINED;
+			continue;
+		}
+
 		r = validate_nodeid(attrs[i].value, &args->attrs[i].value);
 		if (r != HSAKMT_STATUS_SUCCESS) {
 			pr_debug("invalid node ID: %d\n", attrs[i].value);
@@ -149,13 +155,20 @@ hsaKmtSVMGetAttr(void *start_addr, HSAuint64 size, unsigned int nattr,
 		    attrs[i].type != KFD_IOCTL_SVM_ATTR_NO_ACCESS)
 			continue;
 
-		if (attrs[i].value == 0xffffffff)
-			continue;
-
-		r = gpuid_to_nodeid(attrs[i].value, &attrs[i].value);
-		if (r != HSAKMT_STATUS_SUCCESS) {
-			pr_debug("invalid GPU ID: %d\n", attrs[i].value);
-			return r;
+		switch (attrs[i].value) {
+		case KFD_IOCTL_SVM_LOCATION_SYSMEM:
+			attrs[i].value = 0;
+			break;
+		case KFD_IOCTL_SVM_LOCATION_UNDEFINED:
+			attrs[i].value = INVALID_NODEID;
+			break;
+		default:
+			r = gpuid_to_nodeid(attrs[i].value, &attrs[i].value);
+			if (r != HSAKMT_STATUS_SUCCESS) {
+				pr_debug("invalid GPU ID: %d\n",
+					 attrs[i].value);
+				return r;
+			}
 		}
 	}
 
