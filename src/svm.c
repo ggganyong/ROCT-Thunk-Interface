@@ -83,6 +83,12 @@ hsaKmtSVMSetAttr(void *start_addr, HSAuint64 size, unsigned int nattr,
 		if (r != HSAKMT_STATUS_SUCCESS) {
 			pr_debug("invalid node ID: %d\n", attrs[i].value);
 			return r;
+		} else if (!args->attrs[i].value &&
+			   (attrs[i].type == KFD_IOCTL_SVM_ATTR_ACCESS ||
+			    attrs[i].type == KFD_IOCTL_SVM_ATTR_ACCESS_IN_PLACE ||
+			    attrs[i].type == KFD_IOCTL_SVM_ATTR_NO_ACCESS)) {
+			pr_debug("CPU node invalid for access attribute\n");
+			return HSAKMT_STATUS_INVALID_NODE_UNIT;
 		}
 	}
 
@@ -135,6 +141,9 @@ hsaKmtSVMGetAttr(void *start_addr, HSAuint64 size, unsigned int nattr,
 		if (r != HSAKMT_STATUS_SUCCESS) {
 			pr_debug("invalid node ID: %d\n", attrs[i].value);
 			return r;
+		} else if (!args->attrs[i].value) {
+			pr_debug("CPU node invalid for access attribute\n");
+			return HSAKMT_STATUS_INVALID_NODE_UNIT;
 		}
 	}
 
