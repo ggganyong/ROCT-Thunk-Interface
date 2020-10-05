@@ -210,9 +210,10 @@ typedef union
         unsigned int WaveLaunchModeSupported: 1; // Indicates if Wave Launch Mode is supported on the node.
         unsigned int PreciseMemoryOperationsSupported: 1; // Indicates if Precise Memory Operations are supported on the node.
         unsigned int SRAM_EDCSupport: 1;         // Indicates if GFX internal SRAM EDC/ECC functionality is active
-        unsigned int Mem_EDCSupoort: 1;          // Indicates if GFX internal DRAM/HBM EDC/ECC functionality is active
+        unsigned int Mem_EDCSupport: 1;          // Indicates if GFX internal DRAM/HBM EDC/ECC functionality is active
         unsigned int RASEventNotify: 1;          // Indicates if GFX extended RASFeatures and RAS EventNotify status is available
-        unsigned int Reserved            : 10;
+        unsigned int ASICRevision: 4;            // Indicates the ASIC revision of the chip on this node.
+        unsigned int Reserved            : 6;
     } ui32;
 } HSA_CAPABILITY;
 
@@ -223,10 +224,10 @@ typedef union
     HSAuint64 Value;
     struct
     {
-        HSAuint64 WatchAddrMaskLoBit: 6; // Only bits
+        HSAuint64 WatchAddrMaskLoBit: 4; // Only bits
                                         // WatchAddrMaskLoBit..WatchAddrMaskHiBit
                                         // of the
-        HSAuint64 WatchAddrMaskHiBit: 4; // watch address mask are used.
+        HSAuint64 WatchAddrMaskHiBit: 6; // watch address mask are used.
                                          // 0 is the least significant bit.
         HSAuint64 TrapDataCount: 4;      // Number of 32 bit TrapData
                                          // registers supported.

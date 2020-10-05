@@ -69,10 +69,13 @@ hsaKmtQueueResume;
 hsaKmtAllocQueueGWS;
 hsaKmtGetKernelDebugTrapVersionInfo;
 hsaKmtGetThunkDebugTrapVersionInfo;
+hsaKmtSetAddressWatch;
+hsaKmtClearAddressWatch;
 hsaKmtSVMSetAttr;
 hsaKmtSVMGetAttr;
 hsaKmtSetXNACKMode;
 hsaKmtGetXNACKMode;
+
 local: *;
 };
 

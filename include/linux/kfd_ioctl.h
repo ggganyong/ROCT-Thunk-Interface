@@ -28,8 +28,25 @@
 
 #define KFD_IOCTL_MAJOR_VERSION 1
 #define KFD_IOCTL_MINOR_VERSION 2
-#define KFD_IOCTL_DBG_MAJOR_VERSION	1
-#define KFD_IOCTL_DBG_MINOR_VERSION	0
+
+/*
+ * Debug revision change log
+ *
+ * 0.1 - Initial revision
+ * 0.2 - Fix to include querying pending event that is both trap and vmfault
+ * 1.0 - Removed function to set debug data (renumbering functions broke ABI)
+ * 1.1 - Allow attaching to processes that have not opened /dev/kfd yet
+ * 1.2 - Allow flag option to clear queue status on queue suspend
+ * 1.3 - Fix race condition between clear on suspend and trap event handling
+ * 1.3 - Fix race condition between clear on suspend and trap event handling
+ * 1.4 - Fix bad kfifo free
+ * 1.5 - Fix ABA issue between queue snapshot and suspend
+ * 2.0 - Return number of queues suspended/resumed and mask invalid/error
+ *       array slots
+ * 2.1 - Add Set Address Watch, and Clear Address Watch support.
+ */
+#define KFD_IOCTL_DBG_MAJOR_VERSION	2
+#define KFD_IOCTL_DBG_MINOR_VERSION	1
 
 struct kfd_ioctl_get_version_args {
 	__u32 major_version;	/* from KFD */
@@ -256,6 +273,7 @@ struct kfd_ioctl_dbg_wave_control_args {
  * data2: flags (IN)
  * data3: suspend[2:2], event type [1:0] (OUT)
  */
+
 #define KFD_IOC_DBG_TRAP_QUERY_DEBUG_EVENT 5
 
 /* KFD_IOC_DBG_TRAP_GET_QUEUE_SNAPSHOT:
@@ -267,13 +285,28 @@ struct kfd_ioctl_dbg_wave_control_args {
 #define KFD_IOC_DBG_TRAP_GET_QUEUE_SNAPSHOT 6
 
 /* KFD_IOC_DBG_TRAP_GET_VERSION:
- * prt: unsused
+ * ptr: unsused
  * data1: major version (OUT)
  * data2: minor version (OUT)
  * data3: unused
  */
 #define KFD_IOC_DBG_TRAP_GET_VERSION	7
 
+/* KFD_IOC_DBG_TRAP_CLEAR_ADDRESS_WATCH:
+ * ptr: unused
+ * data1: watch ID
+ * data2: unused
+ * data3: unused
+ */
+#define KFD_IOC_DBG_TRAP_CLEAR_ADDRESS_WATCH 8
+
+/* KFD_IOC_DBG_TRAP_SET_ADDRESS_WATCH:
+ * ptr:   Watch address
+ * data1: Watch ID (OUT)
+ * data2: watch_mode: 0=read, 1=nonread, 2=atomic, 3=all
+ * data3: watch address mask
+ */
+#define KFD_IOC_DBG_TRAP_SET_ADDRESS_WATCH 9
 
 struct kfd_ioctl_dbg_trap_args {
 	__u64 ptr;     /* to KFD -- used for pointer arguments: queue arrays */
@@ -845,19 +878,23 @@ struct kfd_ioctl_set_xnack_mode_args {
 #define AMDKFD_IOC_SET_XNACK_MODE		\
 		AMDKFD_IOWR(0x20, struct kfd_ioctl_set_xnack_mode_args)
 
+#define AMDKFD_COMMAND_START		0x01
+#define AMDKFD_COMMAND_END		0x21
+
+/* non-upstream ioctls */
 #define AMDKFD_IOC_IPC_IMPORT_HANDLE                                    \
-		AMDKFD_IOWR(0x21, struct kfd_ioctl_ipc_import_handle_args)
+		AMDKFD_IOWR(0x80, struct kfd_ioctl_ipc_import_handle_args)
 
 #define AMDKFD_IOC_IPC_EXPORT_HANDLE		\
-		AMDKFD_IOWR(0x22, struct kfd_ioctl_ipc_export_handle_args)
+		AMDKFD_IOWR(0x81, struct kfd_ioctl_ipc_export_handle_args)
 
 #define AMDKFD_IOC_DBG_TRAP			\
-		AMDKFD_IOWR(0x23, struct kfd_ioctl_dbg_trap_args)
+		AMDKFD_IOWR(0x82, struct kfd_ioctl_dbg_trap_args)
 
 #define AMDKFD_IOC_CROSS_MEMORY_COPY		\
-		AMDKFD_IOWR(0x24, struct kfd_ioctl_cross_memory_copy_args)
+		AMDKFD_IOWR(0x83, struct kfd_ioctl_cross_memory_copy_args)
 
-#define AMDKFD_COMMAND_START		0x01
-#define AMDKFD_COMMAND_END		0x25
+#define AMDKFD_COMMAND_START_2		0x80
+#define AMDKFD_COMMAND_END_2		0x84
 
 #endif

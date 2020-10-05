@@ -48,7 +48,7 @@
 #define HWREG_SIZE_PER_CU	0x1000
 #define WG_CONTEXT_DATA_SIZE_PER_CU(asic_family)	(VGPR_SIZE_PER_CU(asic_family) + SGPR_SIZE_PER_CU + LDS_SIZE_PER_CU + HWREG_SIZE_PER_CU)
 #define WAVES_PER_CU		32
-#define CNTL_STACK_BYTES_PER_WAVE	8
+#define CNTL_STACK_BYTES_PER_WAVE(asic_family)	(asic_family >= CHIP_NAVI10 ? 12 : 8)
 
 struct device_info {
 	enum asic_family_type asic_family;
@@ -164,6 +164,18 @@ const struct device_info navi14_device_info = {
     .doorbell_size = DOORBELL_SIZE_GFX9,
 };
 
+const struct device_info sienna_cichlid_device_info = {
+    .asic_family = CHIP_SIENNA_CICHLID,
+    .eop_buffer_size = 4096,
+    .doorbell_size = DOORBELL_SIZE_GFX9,
+};
+
+const struct device_info navy_flounder_device_info = {
+    .asic_family = CHIP_NAVY_FLOUNDER,
+    .eop_buffer_size = 4096,
+    .doorbell_size = DOORBELL_SIZE_GFX9,
+};
+
 static const struct device_info *dev_lookup_table[] = {
 	[CHIP_KAVERI] = &kaveri_device_info,
 	[CHIP_HAWAII] = &hawaii_device_info,
@@ -183,6 +195,8 @@ static const struct device_info *dev_lookup_table[] = {
 	[CHIP_NAVI10] = &navi10_device_info,
 	[CHIP_NAVI12] = &navi12_device_info,
 	[CHIP_NAVI14] = &navi14_device_info,
+	[CHIP_SIENNA_CICHLID] = &sienna_cichlid_device_info,
+	[CHIP_NAVY_FLOUNDER] = &navy_flounder_device_info,
 };
 
 struct queue {
@@ -258,7 +272,7 @@ static void get_doorbell_map_info(uint16_t dev_id,
 	 * GPUVM doorbell on Tonga requires a workaround for VM TLB ACTIVE bit
 	 * lookup bug. Remove ASIC check when this is implemented in amdgpu.
 	 */
-	doorbell->use_gpuvm = (topology_is_dgpu(dev_id) &&
+	doorbell->use_gpuvm = (is_dgpu &&
 			       dev_info->asic_family != CHIP_TONGA);
 	doorbell->size = DOORBELLS_PAGE_SIZE(dev_info->doorbell_size);
 }
@@ -411,10 +425,19 @@ static bool update_ctx_save_restore_size(uint32_t nodeid, struct queue *q)
 		uint32_t ctl_stack_size, wg_data_size;
 		uint32_t cu_num = node.NumFComputeCores / node.NumSIMDPerCU;
 
-		ctl_stack_size = cu_num * WAVES_PER_CU * CNTL_STACK_BYTES_PER_WAVE + 8;
+		ctl_stack_size = cu_num * WAVES_PER_CU * CNTL_STACK_BYTES_PER_WAVE(q->dev_info->asic_family) + 8;
 		wg_data_size = cu_num * WG_CONTEXT_DATA_SIZE_PER_CU(q->dev_info->asic_family);
 		q->ctl_stack_size = PAGE_ALIGN_UP(ctl_stack_size
 					+ sizeof(HsaUserContextSaveAreaHeader));
+
+		if (q->dev_info->asic_family >= CHIP_NAVI10 &&
+			q->dev_info->asic_family <= CHIP_NAVY_FLOUNDER) {
+			/* HW design limits control stack size to 0x7000.
+			 * This is insufficient for theoretical PM4 cases
+			 * but sufficient for AQL, limited by SPI events.
+			 */
+			q->ctl_stack_size = MIN(q->ctl_stack_size, 0x7000);
+		}
 
 		q->ctx_save_restore_size = q->ctl_stack_size
 					+ PAGE_ALIGN_UP(wg_data_size);
@@ -676,9 +699,9 @@ HSAKMT_STATUS HSAKMTAPI hsaKmtCreateQueue(HSAuint32 NodeId,
 	if (IS_SOC15(dev_info->asic_family)) {
 		/* On SOC15 chips, the doorbell offset within the
 		 * doorbell page is included in the doorbell offset
-		 * returned by KFD. This allows doorbells to be
-		 * allocated per-device, independent of the
-		 * per-process queue ID.
+		 * returned by KFD. This allows CP queue doorbells to be
+		 * allocated dynamically (while SDMA queue doorbells fixed)
+		 * rather than based on the its process queue ID.
 		 */
 		doorbell_mmap_offset = args.doorbell_offset &
 			~(HSAuint64)(doorbells[NodeId].size - 1);

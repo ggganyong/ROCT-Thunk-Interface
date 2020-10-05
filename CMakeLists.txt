@@ -25,12 +25,29 @@
 
 cmake_minimum_required ( VERSION 3.5.0 )
 
+## Cosmetic Cmake version warnings.
+if(NOT EXISTS VERSION_WARNED)
+  set (VERSION_WARNED FALSE CACHE BOOL "")
+endif()
+if(${CMAKE_VERSION} VERSION_LESS "3.6.0" AND NOT ${VERSION_WARNED})
+  message("Your CMake version is too old for full functionality.
+Generated package file names may be incorrect.
+Please update to CMake 3.6 or newer to generate correct package file names")
+  set( VERSION_WARNED TRUE CACHE BOOL "Suppress cosmetic build errors due to CMake version after first warning." FORCE )
+  mark_as_advanced( FORCE VERSION_WARNED )
+endif()
+
 set ( HSAKMT "hsakmt" )
 set ( HSAKMT_PACKAGE "hsakmt-roct" )
 set ( HSAKMT_COMPONENT "lib${HSAKMT}" )
 set ( HSAKMT_TARGET "${HSAKMT}" )
 
 project ( ${HSAKMT_TARGET} VERSION 1.9.0)
+
+if ( NOT DEFINED BUILD_SHARED_LIBS )
+  set ( BUILD_SHARED_LIBS "on" )
+endif()
+set ( BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared library (.so) or not.")
 
 # Optionally, build HSAKMT with ccache.
 set(ROCM_CCACHE_BUILD OFF CACHE BOOL "Set to ON for a ccache enabled build")
@@ -43,10 +60,7 @@ if (ROCM_CCACHE_BUILD)
   endif() # if (CCACHE_PROGRAM)
 endif() # if (ROCM_CCACHE_BUILD)
 
-## Set default module path if not already set
-if ( NOT DEFINED CMAKE_MODULE_PATH )
-    set ( CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/" )
-endif ()
+list( APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules" )
 
 ## Include common cmake modules
 include ( utils )
@@ -73,9 +87,6 @@ if ( DEFINED VERSION_BUILD AND NOT ${VERSION_BUILD} STREQUAL "" )
     set ( BUILD_VERSION_PATCH "${BUILD_VERSION_PATCH}-${VERSION_BUILD}" )
 endif ()
 set ( BUILD_VERSION_STRING "${BUILD_VERSION_MAJOR}.${BUILD_VERSION_MINOR}.${BUILD_VERSION_PATCH}" )
-
-## Verbose output.
-#set ( CMAKE_VERBOSE_MAKEFILE on )
 
 ## Compiler flags
 set (HSAKMT_C_FLAGS -fPIC -W -Wall -Wextra -Wno-unused-parameter -Wformat-security -Wswitch-default -Wundef -Wshadow -Wpointer-arith -Wbad-function-cast -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls -Wunreachable-code -std=gnu99 -fvisibility=hidden)
@@ -115,12 +126,21 @@ set ( HSAKMT_SRC "src/debug.c"
                  "src/svm.c"
                  "src/version.c")
 
-## Include paths
-include_directories ( ${CMAKE_CURRENT_SOURCE_DIR}/include )
-include_directories ( ${CMAKE_CURRENT_SOURCE_DIR}/src )
+## Declare the library target name
+add_library ( ${HSAKMT_TARGET} "")
 
-## Add the library
-add_library ( ${HSAKMT_TARGET} SHARED ${HSAKMT_SRC} )
+## Add sources
+target_sources ( ${HSAKMT_TARGET} PRIVATE ${HSAKMT_SRC} )
+
+## Add headers.  The public headers need to point at their location in both build and install
+## directory layouts.  This declaration allows publishing library use data to downstream clients.
+target_include_directories( ${HSAKMT_TARGET}
+  PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src )
+
 target_compile_options(${HSAKMT_TARGET} PRIVATE ${HSAKMT_C_FLAGS})
 set_property(TARGET ${HSAKMT_TARGET} PROPERTY LINK_FLAGS ${HSAKMT_LINK_FLAGS})
 
@@ -128,51 +148,105 @@ set_property(TARGET ${HSAKMT_TARGET} PROPERTY LINK_FLAGS ${HSAKMT_LINK_FLAGS})
 set_property ( TARGET ${HSAKMT_TARGET} PROPERTY VERSION "${LIB_VERSION_STRING}" )
 set_property ( TARGET ${HSAKMT_TARGET} PROPERTY SOVERSION "${LIB_VERSION_MAJOR}" )
 
-find_package(PkgConfig)
+#find_package(PkgConfig)
 target_link_libraries ( ${HSAKMT_TARGET}
-  pthread rt numa
+  PRIVATE pthread rt numa
 )
 
-## Define default variable and variables for the optional build target hsakmt-dev
-set ( SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE STRING "Location of hsakmt source code." )
-set ( CMAKE_INSTALL_PREFIX "/opt/rocm"  CACHE STRING "Default installation directory." )
+## Define default paths and packages.
+if( CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT )
+  set ( CMAKE_INSTALL_PREFIX "/opt/rocm" )
+endif()
+set ( CMAKE_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX} CACHE STRING "Default installation directory." FORCE )
 set ( CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}"  CACHE STRING "Default packaging prefix." )
 set ( CPACK_GENERATOR "DEB;RPM"  CACHE STRING "Default packaging generators." )
 
-## Specify build, install and package targets hsakmt-dev
-set ( DEV_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/hsakmt-roct-dev )
-configure_file ( hsakmt-dev.txt ${DEV_BUILD_DIR}/CMakeLists.txt @ONLY )
-add_custom_target ( build-dev
-    COMMAND ${CMAKE_COMMAND}
-        -DSOURCE_DIR="${SOURCE_DIR}"
-        -DCMAKE_INSTALL_PREFIX="${CMAKE_INSTALL_PREFIX}"
-        -DCPACK_RPM_PACKAGE_REQUIRES="hsakmt-roct"
-        -DCPACK_PACKAGING_INSTALL_PREFIX="${CPACK_PACKAGING_INSTALL_PREFIX}"
-        -DVERSION="${BUILD_VERSION_STRING}"
-        -DHSAKMT_BIN_NAME="${HSAKMT}"
-    WORKING_DIRECTORY ${DEV_BUILD_DIR} )
+# Installs binaries and exports the library usage data to ${HSAKMT_TARGET}Targets
+install ( TARGETS ${HSAKMT_TARGET} EXPORT ${HSAKMT_TARGET}Targets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT binary
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT binary )
 
-## Custom targets for the devel package
-add_custom_target ( install-dev DEPENDS build-dev COMMAND make install WORKING_DIRECTORY ${DEV_BUILD_DIR} )
-add_custom_target ( package-dev DEPENDS build-dev
-    COMMAND rm -rf *.deb *.rpm *.tar.gz
-    COMMAND make package
-    WORKING_DIRECTORY ${DEV_BUILD_DIR} )
+install ( FILES ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md DESTINATION ${CMAKE_INSTALL_DOCDIR} COMPONENT binary )
 
-## Add the install directives for the runtime library.
-install ( TARGETS ${HSAKMT_TARGET} DESTINATION ${CMAKE_INSTALL_LIBDIR} )
-install ( FILES ${SOURCE_DIR}/LICENSE.md DESTINATION ${CMAKE_INSTALL_DOCDIR} )
+# Install public headers
+install ( DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  COMPONENT devel PATTERN "linux" EXCLUDE )
+
+# Record our usage data for clients find_package calls.
+install ( EXPORT ${HSAKMT_TARGET}Targets
+  FILE ${HSAKMT_TARGET}Targets.cmake
+  NAMESPACE ${HSAKMT_TARGET}::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${HSAKMT_TARGET}
+  COMPONENT devel)
+
+# Adds the target alias hsakmt::hsakmt to the local cmake cache.
+# This isn't necessary today.  It's harmless preparation for some
+# hypothetical future in which the we might be included by add_subdirectory()
+# in some other project's cmake file.  It allows uniform use of find_package
+# and target_link_library() without regard to whether a target is external or
+# a subdirectory of the current build.
+add_library( ${HSAKMT_TARGET}::${HSAKMT_TARGET} ALIAS ${HSAKMT_TARGET} )
+
+# Create cmake configuration files
+include(CMakePackageConfigHelpers)
+
+configure_package_config_file(${HSAKMT_TARGET}-config.cmake.in
+                              ${HSAKMT_TARGET}-config.cmake
+                              INSTALL_DESTINATION
+                                  ${CMAKE_INSTALL_LIBDIR}/cmake/${HSAKMT_TARGET} )
+
+write_basic_package_version_file(${HSAKMT_TARGET}-config-version.cmake
+                 VERSION ${BUILD_VERSION_STRING}
+                                 COMPATIBILITY
+                                     AnyNewerVersion)
+
+install(FILES
+            ${CMAKE_CURRENT_BINARY_DIR}/${HSAKMT_TARGET}-config.cmake
+            ${CMAKE_CURRENT_BINARY_DIR}/${HSAKMT_TARGET}-config-version.cmake
+        DESTINATION
+            ${CMAKE_INSTALL_LIBDIR}/cmake/${HSAKMT_TARGET}
+        COMPONENT devel)
+
+# Optionally record the package's find module in the user's package cache.
+if ( NOT DEFINED EXPORT_TO_USER_PACKAGE_REGISTRY )
+  set ( EXPORT_TO_USER_PACKAGE_REGISTRY "off" )
+endif()
+set ( EXPORT_TO_USER_PACKAGE_REGISTRY ${EXPORT_TO_USER_PACKAGE_REGISTRY} CACHE BOOL "Add cmake package config location to the user's cmake package registry.")
+if(${EXPORT_TO_USER_PACKAGE_REGISTRY})
+  # Enable writing to the registry
+  set(CMAKE_EXPORT_PACKAGE_REGISTRY ON)
+  # Generate a target file for the build
+  export(TARGETS ${HSAKMT_TARGET} NAMESPACE ${HSAKMT_TARGET}:: FILE ${HSAKMT_TARGET}Targets.cmake)
+  # Record the package in the user's cache.
+  export(PACKAGE ${HSAKMT_TARGET})
+endif()
+
+# CPACK_PACKAGING_INSTALL_PREFIX is needed in libhsakmt.pc.in
+# TODO: Add support for relocatable packages.
+configure_file ( libhsakmt.pc.in libhsakmt.pc @ONLY )
+
+install ( FILES ${CMAKE_CURRENT_BINARY_DIR}/libhsakmt.pc DESTINATION ${CMAKE_INSTALL_DATADIR}/pkgconfig COMPONENT devel)
+
+# Use component packaging
+set ( CPACK_COMPONENTS_GROUPING IGNORE )
+set ( CPACK_COMPONENTS_ALL binary devel )
+set ( CPACK_DEB_COMPONENT_INSTALL ON )
+set ( CPACK_RPM_COMPONENT_INSTALL ON )
 
 ## Add the packaging directives for the runtime library.
-set ( CPACK_PACKAGE_NAME ${HSAKMT_PACKAGE} )
-set ( CPACK_PACKAGE_VENDOR "AMD" )
+set ( CPACK_PACKAGE_VENDOR "Advanced Micro Devices, Inc." )
 set ( CPACK_PACKAGE_VERSION_MAJOR ${BUILD_VERSION_MAJOR} )
 set ( CPACK_PACKAGE_VERSION_MINOR ${BUILD_VERSION_MINOR} )
 set ( CPACK_PACKAGE_VERSION_PATCH ${BUILD_VERSION_PATCH} )
-set ( CPACK_PACKAGE_CONTACT "Advanced Micro Devices Inc." )
-set ( CPACK_PACKAGE_DESCRIPTION_SUMMARY "HSAKMT library for AMD KFD support" )
-set ( CPACK_RESOURCE_FILE_LICENSE "${SOURCE_DIR}/LICENSE.md" )
-set ( CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}.x86_64" )
+set ( CPACK_PACKAGE_CONTACT "AMD GFX mailing list <amd-gfx@lists.freedesktop.org>" )
+set ( CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md" )
+
+## Component packaging, BINARY
+set ( CPACK_COMPONENT_BINARY_DESCRIPTION "HSAKMT library for AMD KFD support\n This repository includes the user-mode API interfaces\n used to interact with the ROCk driver." )
+set ( CPACK_DEBIAN_BINARY_PACKAGE_NAME ${HSAKMT_PACKAGE} )
+set ( CPACK_DEBIAN_BINARY_FILE_NAME "${CPACK_DEBIAN_BINARY_PACKAGE_NAME}_${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}_amd64.deb" )
+set ( CPACK_RPM_BINARY_PACKAGE_NAME ${HSAKMT_PACKAGE} )
+set ( CPACK_RPM_BINARY_FILE_NAME "${CPACK_RPM_BINARY_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}.x86_64.rpm" )
 
 #checking for OS-version
 if( EXISTS "/etc/os-release" )
@@ -194,21 +268,33 @@ endif()
 
 # Debian package specific variables
 set ( CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/RadeonOpenCompute/ROCT-Thunk-Interface" )
-set ( CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_SOURCE_DIR}/DEBIAN/postinst;${CMAKE_CURRENT_SOURCE_DIR}/DEBIAN/prerm" )
-set ( CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, libnuma1, zlib1g, libudev1" )
+set ( CPACK_DEBIAN_BINARY_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_SOURCE_DIR}/DEBIAN/postinst;${CMAKE_CURRENT_SOURCE_DIR}/DEBIAN/prerm" )
+set ( CPACK_DEBIAN_BINARY_PACKAGE_DEPENDS "libc6, libnuma1, zlib1g, libudev1" )
 
 # RPM package specific variables
 if( DISTRO_ID MATCHES "sles" )
-    set ( CPACK_RPM_PACKAGE_REQUIRES "glibc, libnuma-devel, libgcc_s1")
+    set ( CPACK_RPM_BINARY_PACKAGE_REQUIRES "glibc, libnuma-devel, libgcc_s1")
 elseif( DISTRO_ID MATCHES "centos" AND DISTRO_RELEASE MATCHES "6" )
-    set ( CPACK_RPM_PACKAGE_REQUIRES "glibc, numactl, libgcc" )
+    set ( CPACK_RPM_BINARY_PACKAGE_REQUIRES "glibc, numactl, libgcc" )
 else()
-    set ( CPACK_RPM_PACKAGE_REQUIRES "glibc, numactl-libs, libgcc" )
+    set ( CPACK_RPM_BINARY_PACKAGE_REQUIRES "glibc, numactl-libs, libgcc" )
 endif()
-set ( CPACK_RPM_PRE_INSTALL_SCRIPT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/RPM/rpm_post" )
-set ( CPACK_RPM_POST_UNINSTALL_SCRIPT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/RPM/rpm_postun" )
+set ( CPACK_RPM_BINARY_PRE_INSTALL_SCRIPT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/RPM/rpm_post" )
+set ( CPACK_RPM_BINARY_POST_UNINSTALL_SCRIPT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/RPM/rpm_postun" )
 
-# CPACK_PACKAGING_INSTALL_PREFIX is needed in libhsakmt.pc.in
-configure_file ( libhsakmt.pc.in ${DEV_BUILD_DIR}/libhsakmt.pc @ONLY )
+## Component packaging, DEVEL
+set ( CPACK_COMPONENT_DEVEL_DESCRIPTION "HSAKMT development package.\n This package contains the headers, pkgonfig and\n cmake files for the ROCT package" )
+
+# Debian package specific variables
+set ( CPACK_DEBIAN_DEVEL_PACKAGE_NAME "hsakmt-roct-dev" )
+set ( CPACK_DEBIAN_DEVEL_FILE_NAME "${CPACK_DEBIAN_DEVEL_PACKAGE_NAME}_${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}_amd64.deb" )
+set ( CPACK_DEBIAN_DEVEL_PACKAGE_DEPENDS "${HSAKMT_PACKAGE} (=${BUILD_VERSION_MAJOR}.${BUILD_VERSION_MINOR}.${BUILD_VERSION_PATCH})" )
+
+# RPM package specific variables
+set ( CPACK_RPM_DEVEL_PACKAGE_NAME "hsakmt-roct-devel" )
+set ( CPACK_RPM_DEVEL_FILE_NAME "${CPACK_RPM_DEVEL_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}.x86_64.rpm" )
+set ( CPACK_RPM_DEVEL_PACKAGE_DEPENDS "${HSAKMT_PACKAGE} = ${BUILD_VERSION_MAJOR}.${BUILD_VERSION_MINOR}.${BUILD_VERSION_PATCH}" )
+# Since we changed the package name to match RPM specs, take care of older builds that had -dev installed
+set ( CPACK_RPM_DEVEL_PACKAGE_OBSOLETES "hsakmt-roct-dev" )
 
 include ( CPack )
