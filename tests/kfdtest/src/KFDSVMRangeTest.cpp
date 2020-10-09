@@ -118,8 +118,8 @@ TEST_F(KFDSVMRangeTest, SetGetAttributesTest) {
                                           };
 
     HSAuint32 expectedDefaultResults[] = {
-                                             0,
-                                             0,
+                                             INVALID_NODEID,
+                                             INVALID_NODEID,
                                              HSA_SVM_FLAG_HOST_ACCESS | HSA_SVM_FLAG_COHERENT,
                                              9,
                                              0,
