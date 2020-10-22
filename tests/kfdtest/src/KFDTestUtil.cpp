@@ -745,6 +745,23 @@ HSAKMT_STATUS SVMRangeMapToNode(void *MemoryAddress, HSAuint64 SizeInBytes,
     return HSAKMT_STATUS_SUCCESS;
 }
 
+HSAKMT_STATUS SVMRangeMapInPlaceToNode(void *MemoryAddress, HSAuint64 SizeInBytes,
+                                           HSAuint32 NodeID) {
+    HSA_SVM_ATTRIBUTE attr;
+    int r;
+
+    attr.type = HSA_SVM_ATTR_ACCESS_IN_PLACE;
+    attr.value = NodeID;
+
+    r = hsaKmtSVMSetAttr(MemoryAddress, SizeInBytes, 1, &attr);
+    if (r) {
+        LOG() << "set map in place to node failed" << std::endl;
+        return HSAKMT_STATUS_ERROR;
+    }
+
+    return HSAKMT_STATUS_SUCCESS;
+}
+
 HSAKMT_STATUS SVMRangSetGranularity(void *MemoryAddress, HSAuint64 SizeInBytes,
                                     HSAuint32 Granularity) {
     HSA_SVM_ATTRIBUTE attr;
