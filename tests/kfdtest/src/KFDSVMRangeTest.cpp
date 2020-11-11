@@ -998,3 +998,86 @@ TEST_F(KFDSVMRangeTest, MultiGPUAccessInPlaceTest) {
     TEST_END
 }
 
+/* Multiple thread migration test
+ *
+ * 2 threads do migration at same time to test range migration race conditon handle.
+ *
+ * Steps:
+ * 1. register 128MB range on system memory, don't map to GPU, 128MB is max size to put in
+ *    sdma queue 4KB IB buffer.
+ * 2. one thread prefetch range to GPU, another thread use sdma queue to access range at same
+ *    time to generate retry vm fault to migrate range to GPU
+ * 3. one thread prefetch range to CPU, another thread read range to generate CPU page fault
+ *    to migrate range to CPU at same time
+ * 4. loop test step 2 and 3 twice, to random CPU/GPU fault and prefetch migration order
+ */
+struct ReadThreadParams {
+    HSAuint64* pBuf;
+    HSAint64 BufferSize;
+    int defaultGPUNode;
+};
+
+unsigned int CpuReadThread(void* p) {
+    struct ReadThreadParams* pArgs = reinterpret_cast<struct ReadThreadParams*>(p);
+
+    for (HSAuint64 i = 0; i < pArgs->BufferSize / 8; i += 512)
+         EXPECT_EQ(i, pArgs->pBuf[i]);
+    return 0;
+}
+
+unsigned int GpuReadThread(void* p) {
+    struct ReadThreadParams* pArgs = reinterpret_cast<struct ReadThreadParams*>(p);
+
+    EXPECT_SUCCESS(SVMRangePrefetchToNode(pArgs->pBuf, pArgs->BufferSize, pArgs->defaultGPUNode));
+    return 0;
+}
+
+TEST_F(KFDSVMRangeTest, MultiThreadMigrationTest) {
+    TEST_REQUIRE_ENV_CAPABILITIES(ENVCAPS_64BITLINUX);
+    TEST_START(TESTPROFILE_RUNALL);
+
+    int defaultGPUNode = m_NodeInfo.HsaDefaultGPUNode();
+    ASSERT_GE(defaultGPUNode, 0) << "failed to get default GPU Node";
+
+    if (m_FamilyId < FAMILY_AI) {
+        LOG() << std::hex << "Skipping test: No svm range support for family ID 0x" << m_FamilyId << "." << std::endl;
+        return;
+    }
+
+    unsigned long test_loops = 2;
+    unsigned long BufferSize = 1UL << 27;
+    HsaSVMRange SysBuffer(BufferSize, defaultGPUNode);
+    HSAuint64 *pBuf = SysBuffer.As<HSAuint64 *>();
+    HsaSVMRange DataBuffer(BufferSize, defaultGPUNode);
+    HSAuint64 *pData = DataBuffer.As<HSAuint64 *>();
+    SDMAQueue sdmaQueue;
+    uint64_t threadId;
+    struct ReadThreadParams params;
+
+    params.pBuf = pBuf;
+    params.BufferSize = BufferSize;
+    params.defaultGPUNode = defaultGPUNode;
+
+    EXPECT_SUCCESS(sdmaQueue.Create(defaultGPUNode));
+
+    for (HSAuint64 i = 0; i < BufferSize / 8; i++)
+        pBuf[i] = i;
+
+    for (HSAuint64 i = 0; i < test_loops; i++) {
+        /* 2 threads migrate to GPU */
+        sdmaQueue.PlaceAndSubmitPacket(SDMACopyDataPacket(sdmaQueue.GetFamilyId(),
+                    pData, pBuf, BufferSize));
+        ASSERT_EQ(true, StartThread(&GpuReadThread, &params, threadId));
+        sdmaQueue.Wait4PacketConsumption();
+        WaitForThread(threadId);
+
+        /* 2 threads migrate to cpu */
+        ASSERT_EQ(true, StartThread(&CpuReadThread, &params, threadId));
+        EXPECT_SUCCESS(SVMRangePrefetchToNode(pBuf, BufferSize, 0));
+        WaitForThread(threadId);
+    }
+
+    EXPECT_SUCCESS(sdmaQueue.Destroy());
+
+    TEST_END
+}
