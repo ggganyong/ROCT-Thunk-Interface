@@ -884,13 +884,16 @@ struct kfd_ioctl_set_xnack_mode_args {
 #define AMDKFD_IOC_ALLOC_QUEUE_GWS		\
 		AMDKFD_IOWR(0x1E, struct kfd_ioctl_alloc_queue_gws_args)
 
-#define AMDKFD_IOC_SVM	AMDKFD_IOWR(0x1F, struct kfd_ioctl_svm_args)
+#define AMDKFD_IOC_SMI_EVENTS			\
+		AMDKFD_IOWR(0x1F, struct kfd_ioctl_smi_events_args)
+
+#define AMDKFD_IOC_SVM	AMDKFD_IOWR(0x20, struct kfd_ioctl_svm_args)
 
 #define AMDKFD_IOC_SET_XNACK_MODE		\
-		AMDKFD_IOWR(0x20, struct kfd_ioctl_set_xnack_mode_args)
+		AMDKFD_IOWR(0x21, struct kfd_ioctl_set_xnack_mode_args)
 
 #define AMDKFD_COMMAND_START		0x01
-#define AMDKFD_COMMAND_END		0x21
+#define AMDKFD_COMMAND_END		0x22
 
 /* non-upstream ioctls */
 #define AMDKFD_IOC_IPC_IMPORT_HANDLE                                    \
